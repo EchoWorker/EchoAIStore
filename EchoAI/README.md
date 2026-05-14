@@ -145,22 +145,36 @@ max_tokens = 16384
 # thinking_level = "medium"    # minimal|low|medium|high|max (Anthropic/Google only)
 
 # ── Providers ────────────────────────────────────────────────────
+# Default provider settings (applied to all providers as fallback)
+[provider]
+# api_key = "sk-..."           # fallback API key for all providers
+# base_url = "http://localhost:8080/v1"  # fallback base URL (e.g. local proxy)
+# protocol = "chat_completions"  # chat_completions | responses | anthropic_messages
+
+# Per-provider configuration
 [provider.anthropic]
-api_key = "sk-ant-..."         # or set ANTHROPIC_API_KEY env var
+api_key = "sk-ant-..."
+# base_url = "https://api.anthropic.com/v1"
 
 [provider.openai]
-# api_key = "sk-..."           # or set OPENAI_API_KEY env var
+# api_key = "sk-..."
+# base_url = "https://api.openai.com/v1"
 
 [provider.google]
-# api_key = "AIza..."          # or set GOOGLE_API_KEY env var
+# api_key = "AIza..."
+# base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 # Any OpenAI-compatible endpoint:
 # [provider.deepseek]
-# api_key = "sk-..."           # or set DEEPSEEK_API_KEY
+# api_key = "sk-..."
 # base_url = "https://api.deepseek.com/v1"
 
 # [provider.ollama]
 # base_url = "http://localhost:11434/v1"
+
+# [provider.openrouter]
+# api_key = "sk-or-..."
+# base_url = "https://openrouter.ai/api/v1"
 
 # ── Compaction ───────────────────────────────────────────────────
 [compaction]
@@ -187,17 +201,6 @@ mode = "auto"                  # auto|suggest|ask
 # context_window = 64000
 # supports_thinking = true
 ```
-
-**Environment variables** (override config file):
-
-| Variable | Description |
-|---|---|
-| `ECHOCODE_MODEL` | Override model name |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `GOOGLE_API_KEY` | Google API key |
-| `DEEPSEEK_API_KEY` | DeepSeek API key |
-| `OPENROUTER_API_KEY` | OpenRouter API key |
 
 **Supported providers:** Anthropic, OpenAI, Google, DeepSeek, Groq, Mistral, Cohere, Together, Fireworks, OpenRouter, Ollama, Perplexity, XAI, and any OpenAI-compatible endpoint.
 
