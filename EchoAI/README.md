@@ -173,7 +173,8 @@ preserve_recent_turns = 4
 mode = "auto"                  # auto|suggest|ask
 
 # ── Custom models ────────────────────────────────────────────────
-# [models.my-local-model]
+# Key must match the "provider/model" format used in the model field
+# [models."ollama/my-local-model"]
 # context_window = 128000
 # supports_thinking = false
 # supports_vision = false
