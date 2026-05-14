@@ -4,7 +4,7 @@
 set -e
 
 REPO="EchoWorker/EchoAIStore"
-INSTALL_DIR="${ECHOAI_INSTALL_DIR:-$HOME/.local/bin}"
+INSTALL_DIR="${ECHOAI_INSTALL_DIR:-$HOME/.echoai/bin}"
 
 # Detect platform
 OS="$(uname -s)"

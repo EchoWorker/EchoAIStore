@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 $repo = "EchoWorker/EchoAIStore"
-$installDir = if ($env:ECHOAI_INSTALL_DIR) { $env:ECHOAI_INSTALL_DIR } else { "$env:LOCALAPPDATA\echoai" }
+$installDir = if ($env:ECHOAI_INSTALL_DIR) { $env:ECHOAI_INSTALL_DIR } else { "$env:USERPROFILE\.echoai\bin" }
 $archive = "echoai-windows-x64.zip"
 
 # Get latest version
