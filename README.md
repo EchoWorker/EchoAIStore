@@ -7,4 +7,4 @@ Product downloads for EchoWorker.
 | Product | Description | Install |
 |---|---|---|
 | [EchoAI](EchoAI/) | AI Agent gateway and runtime | [Install guide](EchoAI/README.md) |
-| [EchoWork](EchoWork/) | (coming soon) | — |
+| [EchoWork](EchoWork/) | Desktop AI collaboration workspace (GUI client for EchoAI) | [Install guide](EchoWork/README.md) |
