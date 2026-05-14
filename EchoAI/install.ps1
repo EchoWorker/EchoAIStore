@@ -1,5 +1,5 @@
 # EchoAI installer for Windows
-# Usage: irm https://raw.githubusercontent.com/EchoWorker/EchoAI/main/scripts/install.ps1 | iex
+# Usage: irm https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoAI/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
@@ -7,9 +7,16 @@ $repo = "EchoWorker/EchoAIStore"
 $installDir = if ($env:ECHOAI_INSTALL_DIR) { $env:ECHOAI_INSTALL_DIR } else { "$env:USERPROFILE\.echoai\bin" }
 $archive = "echoai-windows-x64.zip"
 
-# Get latest version
+# Get latest EchoAI release (filter by echoai- tag prefix)
 Write-Host "Fetching latest release..."
-$release = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest"
+$releases = Invoke-RestMethod "https://api.github.com/repos/$repo/releases"
+$release = $releases | Where-Object { $_.tag_name -like "echoai-*" } | Select-Object -First 1
+
+if (-not $release) {
+    Write-Error "Could not find any EchoAI release"
+    exit 1
+}
+
 $version = $release.tag_name
 $asset = $release.assets | Where-Object { $_.name -eq $archive }
 

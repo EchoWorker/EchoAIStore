@@ -1,6 +1,6 @@
 #!/bin/sh
 # EchoAI installer — downloads the latest release binary for your platform.
-# Usage: curl -fsSL https://raw.githubusercontent.com/EchoWorker/EchoAI/main/scripts/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoAI/install.sh | sh
 set -e
 
 REPO="EchoWorker/EchoAIStore"
@@ -24,11 +24,12 @@ esac
 
 ARCHIVE="echoai-${os_name}-${arch_name}.tar.gz"
 
-# Get latest version
+# Get latest EchoAI release (filter by echoai- tag prefix)
 echo "Fetching latest release..."
-VERSION=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | cut -d'"' -f4)
+VERSION=$(curl -s "https://api.github.com/repos/$REPO/releases" | \
+  grep '"tag_name"' | grep '"echoai-' | head -1 | cut -d'"' -f4)
 if [ -z "$VERSION" ]; then
-  echo "Error: Could not determine latest version"
+  echo "Error: Could not find any EchoAI release"
   exit 1
 fi
 
