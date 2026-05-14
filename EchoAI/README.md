@@ -172,12 +172,20 @@ preserve_recent_turns = 4
 [permissions]
 mode = "auto"                  # auto|suggest|ask
 
-# ── Custom models ────────────────────────────────────────────────
-# Key must match the "provider/model" format used in the model field
+# ── Model registry ───────────────────────────────────────────────
+# Define context_window and capabilities for models not in the built-in list.
+# This is required for correct compaction behavior — without it, unknown models
+# default to 200K context window.
+# Key must match the "provider/model" format used in the model field.
+
 # [models."ollama/my-local-model"]
 # context_window = 128000
 # supports_thinking = false
 # supports_vision = false
+
+# [models."deepseek/deepseek-r1"]
+# context_window = 64000
+# supports_thinking = true
 ```
 
 **Environment variables** (override config file):
