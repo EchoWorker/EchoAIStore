@@ -24,7 +24,6 @@ Latest builds: see [Releases](https://github.com/EchoWorker/EchoAIStore/releases
 ### Windows
 1. Download `EchoWork_*_x64-setup.exe` from the latest `echowork-v*` release.
 2. Run the installer. Click **More info → Run anyway** if SmartScreen warns about an unknown publisher.
-3. EchoWork is installed to `C:\Program Files\EchoWork`.
 
 ### macOS (Apple Silicon)
 1. Download `EchoWork_*_aarch64.dmg`.
