@@ -19,6 +19,19 @@ After installation, restart your terminal and verify:
 echoai --version
 ```
 
+### Configure
+
+The installer creates `~/.echoai/echocode.toml` from a template. **You must edit it before first use** — at minimum set your API key:
+
+```toml
+model = "anthropic/claude-sonnet-4.6"
+
+[provider]
+api_key = "your-api-key-here"
+```
+
+See [EchoCode configuration](#echocode-configuration-echocodetoml) below for full reference.
+
 ### Update
 
 ```bash
