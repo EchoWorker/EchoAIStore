@@ -1,0 +1,50 @@
+# EchoAI Gateway Configuration
+# Copy to ~/.echoai/config.yaml and customize.
+
+# ── Agent backend ────────────────────────────────────────────────────────────
+agents:
+  backend: echo_agent       # "echo_agent" or "claude_code"
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  level: INFO               # Console log level
+  file: echoai.log          # Log file name (in ~/.echoai/)
+  file_level: DEBUG         # File log level
+  rotation: "10 MB"         # Rotate when file exceeds this size
+  retention: 5              # Keep this many rotated files
+  enabled: true
+
+# ── SMTP (for send_email tool) ───────────────────────────────────────────────
+smtp:
+  host: smtp.example.com
+  port: 465
+  username: user@example.com
+  password: your-smtp-password
+  timeout_seconds: 30.0
+
+# ── Plugins ──────────────────────────────────────────────────────────────────
+plugins:
+  # WebSocket/HTTP gateway server
+  - name: server
+    type: server
+    enabled: true
+    protocol: jsonrpc        # "jsonrpc" or "http"
+    bind: tcp                # "tcp", "uds", or "pipe"
+    host: 127.0.0.1
+    port: 8083
+    socket_path: ""          # For bind=uds
+    pipe_name: echoai-server # For bind=pipe
+    token: ""                # Auto-generated if empty
+
+  # Memory plugin (long-term memory + dreaming)
+  - name: memory
+    type: memory
+    enabled: true
+    workspace_dir: ""        # Empty = use default workspace
+    n_results: 6             # Semantic search result count
+    dreaming_enabled: true   # Enable 3-phase dreaming cycle
+
+  # Cron plugin (scheduled tasks)
+  # - name: cron
+  #   type: cron
+  #   enabled: true

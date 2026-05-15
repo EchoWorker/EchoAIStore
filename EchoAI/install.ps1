@@ -49,6 +49,23 @@ if ($currentPath -notlike "*$installDir*") {
 }
 
 Write-Host ""
+
+# Copy example config if no config exists
+$configDir = "$env:USERPROFILE\.echoai"
+New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+
+if (-not (Test-Path "$configDir\echocode.toml")) {
+    $exampleUrl = "https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoAI/echocode.example.toml"
+    try {
+        Invoke-WebRequest -Uri $exampleUrl -OutFile "$configDir\echocode.toml" -ErrorAction Stop
+        Write-Host "📝 Created $configDir\echocode.toml from example." -ForegroundColor Yellow
+    } catch {
+        Write-Host "⚠️  Could not download example config. Create $configDir\echocode.toml manually." -ForegroundColor Yellow
+    }
+}
+
+Write-Host ""
 Write-Host "Get started:"
-Write-Host "  echoai gateway    # Start the server"
-Write-Host "  echoai agent      # Interactive REPL"
+Write-Host "  1. Edit ~/.echoai/echocode.toml — set your API key and model"
+Write-Host "  2. echoai gateway    # Start the server"
+Write-Host "  3. echoai agent      # Interactive REPL"

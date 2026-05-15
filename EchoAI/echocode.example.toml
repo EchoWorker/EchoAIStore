@@ -1,0 +1,125 @@
+# EchoCode Configuration
+# Copy to ~/.echoai/echocode.toml and customize.
+
+# ── General ──────────────────────────────────────────────────────────────────
+
+model = "anthropic/claude-sonnet-4.6"   # Default model (provider/model format)
+max_tokens = 16384                       # Max output tokens per response
+
+# ── Provider (API keys & endpoints) ──────────────────────────────────────────
+# Default provider settings apply to all providers unless overridden.
+
+[provider]
+api_key = "your-api-key"                 # Default API key for all providers
+# base_url = "https://api.example.com"   # Custom proxy endpoint (optional)
+protocol = "chat_completions"            # Default protocol: "chat_completions", "responses", "anthropic_messages"
+
+# Per-provider overrides (api_key, base_url, protocol)
+[provider.anthropic]
+# api_key = "sk-ant-..."                 # Anthropic-specific key
+# base_url = "https://api.anthropic.com" # Direct Anthropic API
+protocol = "chat_completions"            # Or "anthropic_messages" for native protocol
+
+[provider.openai]
+# api_key = "sk-..."
+# base_url = "https://api.openai.com"
+protocol = "chat_completions"
+
+# Custom providers (any name)
+# [provider.zhipu]
+# api_key = "your-zhipu-key"
+# base_url = "https://open.bigmodel.cn/api/paas/v4"
+
+# ── Models ───────────────────────────────────────────────────────────────────
+# Define model capabilities. Name format: "provider/model-name"
+
+# --- Anthropic Models ---
+
+[models."anthropic/claude-haiku-4.5"]
+context_window = 200000
+supports_thinking = false
+supports_vision = true
+
+[models."anthropic/claude-sonnet-4.5"]
+context_window = 200000
+supports_thinking = true
+supports_vision = true
+
+[models."anthropic/claude-sonnet-4.6"]
+context_window = 200000
+supports_thinking = true
+supports_vision = true
+
+[models."anthropic/claude-opus-4.5"]
+context_window = 200000
+supports_thinking = true
+supports_vision = true
+
+[models."anthropic/claude-opus-4.6"]
+context_window = 200000
+supports_thinking = true
+supports_vision = true
+
+[models."anthropic/claude-opus-4.7"]
+context_window = 200000
+supports_thinking = true
+supports_vision = true
+
+# --- Google Models ---
+
+[models."google/gemini-2.5-pro"]
+context_window = 128000
+supports_thinking = false
+supports_vision = true
+
+# --- OpenAI Models (chat_completions) ---
+
+[models."openai/gpt-4o"]
+context_window = 128000
+supports_thinking = false
+supports_vision = true
+
+[models."openai/gpt-5.2"]
+context_window = 400000
+supports_thinking = true
+supports_vision = true
+
+[models."openai/gpt-5-mini"]
+context_window = 264000
+supports_thinking = true
+supports_vision = true
+
+# --- OpenAI Models (responses protocol) ---
+
+[models."openai/gpt-5.5"]
+context_window = 400000
+supports_thinking = true
+supports_vision = true
+protocol = "responses"
+
+[models."openai/gpt-5.4-mini"]
+context_window = 400000
+supports_thinking = true
+supports_vision = true
+protocol = "responses"
+
+# ── Compaction ───────────────────────────────────────────────────────────────
+# Context window management — auto-compact when context gets too large.
+
+[compaction]
+enabled = true
+max_context_ratio = 0.85          # Trigger compaction at 85% of context window
+micro_compact_age_seconds = 300   # Micro-compact tool results older than 5 min
+preserve_recent_turns = 4         # Always keep last N turns intact
+reserve_tokens = 4096             # Reserve tokens for output
+keep_recent_tokens = 2048         # Keep this many tokens from recent context
+
+# ── Tools ────────────────────────────────────────────────────────────────────
+
+# [tools.web_search]
+# provider = "duckduckgo"         # "duckduckgo", "brave", "tavily", "searxng"
+# fallback = ["duckduckgo"]       # Fallback chain
+# timeout_secs = 15
+#
+# [tools.web_search.brave]
+# api_key = "BSA..."

@@ -63,6 +63,22 @@ case ":$PATH:" in
 esac
 
 echo ""
+
+# Copy example config if no config exists
+CONFIG_DIR="$HOME/.echoai"
+mkdir -p "$CONFIG_DIR"
+
+if [ ! -f "$CONFIG_DIR/echocode.toml" ]; then
+  EXAMPLE_URL="https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoAI/echocode.example.toml"
+  if curl -fsSL "$EXAMPLE_URL" -o "$CONFIG_DIR/echocode.toml" 2>/dev/null; then
+    echo "📝 Created $CONFIG_DIR/echocode.toml from example."
+  else
+    echo "⚠️  Could not download example config. Create $CONFIG_DIR/echocode.toml manually."
+  fi
+fi
+
+echo ""
 echo "Get started:"
-echo "  echoai gateway    # Start the server"
-echo "  echoai agent      # Interactive REPL"
+echo "  1. Edit ~/.echoai/echocode.toml — set your API key and model"
+echo "  2. echoai gateway    # Start the server"
+echo "  3. echoai agent      # Interactive REPL"
