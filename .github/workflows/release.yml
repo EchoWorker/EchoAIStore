@@ -393,6 +393,19 @@ jobs:
           cp latest.json release-files/
           ls -la release-files/
 
+      - name: Clean up old EchoWork releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete all previous echowork-v* releases (keep only the new one)
+          VERSION="${{ inputs.echowork_version }}"
+          gh release list --limit 50 | grep -oP 'echowork-v[\d.]+' | while read tag; do
+            if [ "$tag" != "echowork-v${VERSION}" ]; then
+              echo "Deleting old release: $tag"
+              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+            fi
+          done
+
       - name: Create EchoWork release
         uses: softprops/action-gh-release@v2
         with:
