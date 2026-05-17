@@ -130,8 +130,9 @@ jobs:
   # EchoWork Build (2 platforms)
   # ─────────────────────────────────────────────
   build-echowork:
-    if: inputs.echowork_version != ''
+    if: ${{ !failure() && !cancelled() && inputs.echowork_version != '' }}
     name: EchoWork (${{ matrix.platform }})
+    needs: [build-echoai]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -140,9 +141,11 @@ jobs:
           - platform: windows-x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            echoai_archive: echoai-windows-x64.zip
           - platform: macos-arm
             os: macos-latest
             target: aarch64-apple-darwin
+            echoai_archive: echoai-darwin-arm64.tar.gz
 
     steps:
       - name: Checkout EchoWork
@@ -170,6 +173,55 @@ jobs:
           restore-keys: echowork-${{ matrix.target }}-
 
       - run: npm ci
+
+      - name: Download EchoAI artifact (from this workflow)
+        if: inputs.echoai_version != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.echoai_archive }}
+          path: echoai-artifact
+
+      - name: Download EchoAI artifact (from latest release)
+        if: inputs.echoai_version == ''
+        shell: bash
+        run: |
+          set -eo pipefail
+          ARCHIVE="${{ matrix.echoai_archive }}"
+          # Get latest EchoAI release tag
+          TAG=$(gh release list --repo EchoWorker/EchoAIStore --limit 20 \
+            | grep '^EchoAI' | head -n1 | awk '{print $NF}')
+          echo "Downloading $ARCHIVE from release $TAG"
+          mkdir -p echoai-artifact
+          gh release download "$TAG" --repo EchoWorker/EchoAIStore \
+            --pattern "$ARCHIVE" --dir echoai-artifact
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Bundle EchoAI into EchoWork
+        shell: bash
+        run: |
+          set -eo pipefail
+          mkdir -p src-tauri/echoai
+          cd echoai-artifact
+          ARCHIVE="${{ matrix.echoai_archive }}"
+          if [[ "$ARCHIVE" == *.zip ]]; then
+            unzip "$ARCHIVE" -d ../src-tauri/echoai/
+          else
+            tar xzf "$ARCHIVE" -C ../src-tauri/echoai/
+          fi
+          echo "Bundled EchoAI files:"
+          find ../src-tauri/echoai -type f | head -20
+
+      - name: Enable EchoAI resources in tauri config
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'src-tauri/tauri.conf.json';
+            const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+            j.bundle.resources = { 'echoai/**': 'echoai/' };
+            fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
+          "
 
       - name: Override version
         shell: bash
@@ -349,7 +401,7 @@ jobs:
           body: |
             ## EchoWork v${{ inputs.echowork_version }}
 
-            Requires [EchoAI](https://github.com/EchoWorker/EchoAIStore/tree/main/EchoAI) backend.
+            Includes EchoAI backend (bundled).
           files: release-files/*
 
       - name: Update echowork-latest
