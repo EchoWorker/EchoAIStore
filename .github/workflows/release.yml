@@ -80,12 +80,30 @@ jobs:
         working-directory: EchoAI
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Download fastembed model
+        working-directory: EchoAI
+        shell: bash
+        run: |
+          set -eo pipefail
+          MODEL_DIR="models/models--Xenova--bge-small-en-v1.5"
+          SNAP_DIR="$MODEL_DIR/snapshots/ea104dacec62c0de699686887e3f920caeb4f3e3"
+          mkdir -p "$SNAP_DIR/onnx" "$MODEL_DIR/refs" "$MODEL_DIR/blobs"
+          BASE_URL="https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main"
+          curl -fsSL "$BASE_URL/onnx/model.onnx"          -o "$SNAP_DIR/onnx/model.onnx"
+          curl -fsSL "$BASE_URL/config.json"               -o "$SNAP_DIR/config.json"
+          curl -fsSL "$BASE_URL/tokenizer.json"            -o "$SNAP_DIR/tokenizer.json"
+          curl -fsSL "$BASE_URL/tokenizer_config.json"     -o "$SNAP_DIR/tokenizer_config.json"
+          curl -fsSL "$BASE_URL/special_tokens_map.json"   -o "$SNAP_DIR/special_tokens_map.json"
+          echo "ea104dacec62c0de699686887e3f920caeb4f3e3" > "$MODEL_DIR/refs/main"
+          echo "Model files downloaded:"
+          find models -type f | head -20
+
       - name: Package (Unix)
         if: runner.os != 'Windows'
         working-directory: EchoAI
         run: |
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} .
-          tar czf ${{ matrix.archive }} ${{ matrix.binary }}
+          tar czf ${{ matrix.archive }} ${{ matrix.binary }} models/
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -101,7 +119,7 @@ jobs:
           Copy-Item "$crtDir\msvcp140_1.dll" .
           Copy-Item "$crtDir\vcruntime140.dll" .
           Copy-Item "$crtDir\vcruntime140_1.dll" .
-          Compress-Archive -Path ${{ matrix.binary }},msvcp140.dll,msvcp140_1.dll,vcruntime140.dll,vcruntime140_1.dll -DestinationPath ${{ matrix.archive }}
+          Compress-Archive -Path ${{ matrix.binary }},msvcp140.dll,msvcp140_1.dll,vcruntime140.dll,vcruntime140_1.dll,models -DestinationPath ${{ matrix.archive }}
 
       - uses: actions/upload-artifact@v4
         with:
