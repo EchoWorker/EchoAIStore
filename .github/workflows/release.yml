@@ -201,16 +201,17 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
+          echo "=== Contents of echoai-artifact ==="
+          ls -la echoai-artifact/ || echo "echoai-artifact dir not found!"
           mkdir -p src-tauri/echoai
-          cd echoai-artifact
           ARCHIVE="${{ matrix.echoai_archive }}"
           if [[ "$ARCHIVE" == *.zip ]]; then
-            unzip "$ARCHIVE" -d ../src-tauri/echoai/
+            unzip "echoai-artifact/$ARCHIVE" -d src-tauri/echoai/
           else
-            tar xzf "$ARCHIVE" -C ../src-tauri/echoai/
+            tar xzf "echoai-artifact/$ARCHIVE" -C src-tauri/echoai/
           fi
-          echo "Bundled EchoAI files:"
-          find ../src-tauri/echoai -type f | head -20
+          echo "=== Bundled EchoAI files ==="
+          find src-tauri/echoai -type f | head -20
 
       - name: Enable EchoAI resources in tauri config
         shell: bash
