@@ -219,17 +219,6 @@ jobs:
           echo "=== Bundled EchoAI files ==="
           find src-tauri/echoai -type f | head -20
 
-          # Enable resources in tauri config now that files are in place
-          node -e "
-            const fs = require('fs');
-            const p = 'src-tauri/tauri.conf.json';
-            const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-            j.bundle.resources = { 'echoai/**': 'echoai/' };
-            fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
-          "
-          echo "=== Updated tauri.conf.json resources ==="
-          grep -A2 resources src-tauri/tauri.conf.json
-
       - name: Override version
         shell: bash
         run: |
@@ -269,6 +258,7 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_CONFIG: '{"bundle":{"resources":["echoai/"]}}'
         with:
           args: --target ${{ matrix.target }}
 
