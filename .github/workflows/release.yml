@@ -188,8 +188,8 @@ jobs:
           set -eo pipefail
           ARCHIVE="${{ matrix.echoai_archive }}"
           # Get latest EchoAI release tag
-          TAG=$(gh release list --repo EchoWorker/EchoAIStore --limit 20 \
-            | grep '^EchoAI' | head -n1 | awk '{print $NF}')
+          TAG=$(gh release list --repo EchoWorker/EchoAIStore --limit 50 \
+            --json tagName,name --jq '[.[] | select(.name | startswith("EchoAI"))][0].tagName')
           echo "Downloading $ARCHIVE from release $TAG"
           mkdir -p echoai-artifact
           gh release download "$TAG" --repo EchoWorker/EchoAIStore \
