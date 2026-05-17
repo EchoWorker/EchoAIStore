@@ -93,7 +93,15 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" .
-          Compress-Archive -Path ${{ matrix.binary }} -DestinationPath ${{ matrix.archive }}
+          # Bundle VC++ Runtime DLLs so users don't need to install redistributable
+          $vcToolsDir = & vswhere -latest -property installationPath
+          $vcRedistDir = Join-Path $vcToolsDir "VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT"
+          $crtDir = (Resolve-Path $vcRedistDir | Select-Object -First 1).Path
+          Copy-Item "$crtDir\msvcp140.dll" .
+          Copy-Item "$crtDir\msvcp140_1.dll" .
+          Copy-Item "$crtDir\vcruntime140.dll" .
+          Copy-Item "$crtDir\vcruntime140_1.dll" .
+          Compress-Archive -Path ${{ matrix.binary }},msvcp140.dll,msvcp140_1.dll,vcruntime140.dll,vcruntime140_1.dll -DestinationPath ${{ matrix.archive }}
 
       - uses: actions/upload-artifact@v4
         with:
