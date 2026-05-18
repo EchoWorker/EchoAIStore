@@ -200,6 +200,9 @@ jobs:
             --pattern "$ARCHIVE" --dir echoai-artifact
           echo "Downloaded files:"
           ls -la echoai-artifact/
+          # Export version for bundle step
+          ECHOAI_VER=$(echo "$TAG" | sed 's/echoai-v//')
+          echo "ECHOAI_DOWNLOADED_VERSION=$ECHOAI_VER" >> $GITHUB_ENV
         env:
           GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
 
@@ -221,6 +224,17 @@ jobs:
           find src-tauri/echoai -type f
           echo "=== EchoAI dir size ==="
           du -sh src-tauri/echoai/
+
+          # Write version file for deployment logic
+          if [ -n "${{ inputs.echoai_version }}" ]; then
+            echo "${{ inputs.echoai_version }}" > src-tauri/echoai/version
+          elif [ -n "$ECHOAI_DOWNLOADED_VERSION" ]; then
+            echo "$ECHOAI_DOWNLOADED_VERSION" > src-tauri/echoai/version
+          else
+            echo "unknown" > src-tauri/echoai/version
+          fi
+          echo "=== EchoAI version ==="
+          cat src-tauri/echoai/version
 
       - name: Sign bundled echoai binary (macOS)
         if: runner.os == 'macOS'
