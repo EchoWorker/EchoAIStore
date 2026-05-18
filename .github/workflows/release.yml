@@ -211,13 +211,16 @@ jobs:
           ls -la echoai-artifact/
           mkdir -p src-tauri/echoai
           ARCHIVE="${{ matrix.echoai_archive }}"
+          echo "Extracting $ARCHIVE ..."
           if [[ "$ARCHIVE" == *.zip ]]; then
             unzip "echoai-artifact/$ARCHIVE" -d src-tauri/echoai/
           else
             tar xzf "echoai-artifact/$ARCHIVE" -C src-tauri/echoai/
           fi
           echo "=== Bundled EchoAI files ==="
-          find src-tauri/echoai -type f | head -20
+          find src-tauri/echoai -type f
+          echo "=== EchoAI dir size ==="
+          du -sh src-tauri/echoai/
 
       - name: Sign bundled echoai binary (macOS)
         if: runner.os == 'macOS'
@@ -225,18 +228,21 @@ jobs:
           codesign --force --sign - src-tauri/echoai/echoai
           echo "echoai binary ad-hoc signed"
 
-      - name: Override version
+      - name: Override version and enable resources
         shell: bash
         run: |
           set -eo pipefail
           VERSION="${{ inputs.echowork_version }}"
-          echo "Setting version to $VERSION"
+          echo "Setting version to $VERSION, enabling resources: ['echoai/']"
           node -e "
             const fs = require('fs');
             const p = 'src-tauri/tauri.conf.json';
             const j = JSON.parse(fs.readFileSync(p, 'utf8'));
             j.version = '$VERSION';
+            j.bundle.resources = ['echoai/'];
             fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
+            console.log('=== tauri.conf.json bundle section ===');
+            console.log(JSON.stringify(j.bundle, null, 2));
           "
           node -e "
             const fs = require('fs');
@@ -259,12 +265,21 @@ jobs:
           open(p, 'w').write(new)
           "
 
+      - name: Verify config before build
+        shell: bash
+        run: |
+          echo "=== tauri.conf.json (full bundle section) ==="
+          node -e "const j=JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')); console.log(JSON.stringify(j.bundle, null, 2))"
+          echo "=== echoai binary exists? ==="
+          ls -la src-tauri/echoai/echoai* 2>/dev/null || ls -la src-tauri/echoai/echoai*.exe 2>/dev/null || echo "WARNING: echoai binary NOT found!"
+          echo "=== echoai dir total ==="
+          du -sh src-tauri/echoai/
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_CONFIG: '{"bundle":{"resources":["echoai/"]}}'
         with:
           args: --target ${{ matrix.target }}
 
