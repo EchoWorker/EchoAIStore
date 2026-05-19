@@ -81,7 +81,7 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ inputs.echoai_version }}"
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml && rm -f Cargo.toml.bak
           echo "Set EchoAI version to $VERSION"
           head -5 Cargo.toml
 
