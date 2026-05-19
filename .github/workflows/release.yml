@@ -76,6 +76,15 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
 
+      - name: Override EchoAI version
+        working-directory: EchoAI
+        shell: bash
+        run: |
+          VERSION="${{ inputs.echoai_version }}"
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          echo "Set EchoAI version to $VERSION"
+          head -5 Cargo.toml
+
       - name: Build release
         working-directory: EchoAI
         run: cargo build --release --target ${{ matrix.target }}
