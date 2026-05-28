@@ -298,6 +298,15 @@ jobs:
           echo "=== echoai dir total ==="
           du -sh src-tauri/echoai/
 
+      - name: Clean stale bundle outputs
+        shell: bash
+        run: |
+          # bundle/ dir is restored from cache and may contain prior-version
+          # installers (e.g. EchoWork_0.2.0_x64-setup.exe) that would otherwise
+          # be picked up by the wildcard cp in "Collect artifacts".
+          rm -rf src-tauri/target/${{ matrix.target }}/release/bundle
+          echo "Removed stale bundle directory"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
