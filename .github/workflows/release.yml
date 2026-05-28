@@ -385,7 +385,7 @@ jobs:
   # Publish EchoWork
   # ─────────────────────────────────────────────
   publish-echowork:
-    if: inputs.echowork_version != ''
+    if: ${{ !failure() && !cancelled() && inputs.echowork_version != '' }}
     name: Publish EchoWork
     needs: build-echowork
     runs-on: ubuntu-latest
