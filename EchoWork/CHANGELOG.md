@@ -65,7 +65,7 @@ First public preview. Core functionality and CI pipeline established.
 - Not signed with an OS code-signing certificate. macOS Gatekeeper / Windows SmartScreen will warn on first launch.
 - macOS Intel and Linux are not yet built.
 - The first installed version cannot OTA-update itself; users must download a newer version manually once. Subsequent versions update in-app.
-- EchoAI must be installed separately (see prerequisite section in README).
+- EchoAI is now bundled inside EchoWork. Earlier versions required a separate install.
 
 ---
 

@@ -7,6 +7,10 @@ on:
         description: 'EchoAI version (e.g. 0.3.0, leave empty to skip)'
         required: false
         type: string
+      echocode_version:
+        description: 'EchoCode version (e.g. 0.1.0, leave empty to skip)'
+        required: false
+        type: string
       echowork_version:
         description: 'EchoWork version (e.g. 0.2.1, leave empty to skip)'
         required: false
@@ -134,6 +138,107 @@ jobs:
         with:
           name: ${{ matrix.archive }}
           path: EchoAI/${{ matrix.archive }}
+
+  # ─────────────────────────────────────────────
+  # EchoCode Build (3 platforms)
+  # ─────────────────────────────────────────────
+  build-echocode:
+    if: inputs.echocode_version != ''
+    name: EchoCode (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: echocode-windows-x64.zip
+            binary: echo-code.exe
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            archive: echocode-linux-x64.tar.gz
+            binary: echo-code
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive: echocode-darwin-arm64.tar.gz
+            binary: echo-code
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: EchoWorker/EchoCodeRust
+          path: EchoCodeRust
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: EchoWorker/EchoAI
+          path: EchoAI
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: EchoWorker/EchoMemoryRust
+          path: EchoMemoryRust
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            EchoCodeRust/target
+          key: echocode-${{ matrix.target }}-${{ hashFiles('EchoCodeRust/Cargo.lock') }}
+          restore-keys: echocode-${{ matrix.target }}-
+
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Override EchoCode version
+        working-directory: EchoCodeRust
+        shell: bash
+        run: |
+          VERSION="${{ inputs.echocode_version }}"
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml && rm -f Cargo.toml.bak
+          echo "Set EchoCode version to $VERSION"
+          head -5 Cargo.toml
+
+      - name: Build release
+        working-directory: EchoCodeRust
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        working-directory: EchoCodeRust
+        run: |
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} .
+          tar czf ${{ matrix.archive }} ${{ matrix.binary }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        working-directory: EchoCodeRust
+        shell: pwsh
+        run: |
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" .
+          # Bundle VC++ Runtime DLLs
+          $vcToolsDir = & vswhere -latest -property installationPath
+          $vcRedistDir = Join-Path $vcToolsDir "VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT"
+          $crtDir = (Resolve-Path $vcRedistDir | Select-Object -First 1).Path
+          Copy-Item "$crtDir\msvcp140.dll" .
+          Copy-Item "$crtDir\msvcp140_1.dll" .
+          Copy-Item "$crtDir\vcruntime140.dll" .
+          Copy-Item "$crtDir\vcruntime140_1.dll" .
+          Compress-Archive -Path ${{ matrix.binary }},msvcp140.dll,msvcp140_1.dll,vcruntime140.dll,vcruntime140_1.dll -DestinationPath ${{ matrix.archive }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: EchoCodeRust/${{ matrix.archive }}
 
   # ─────────────────────────────────────────────
   # EchoWork Build (2 platforms)
@@ -378,6 +483,47 @@ jobs:
             ```powershell
             irm https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoAI/install.ps1 | iex
             ```
+          files: |
+            artifacts/**/*
+
+  # ─────────────────────────────────────────────
+  # Publish EchoCode
+  # ─────────────────────────────────────────────
+  publish-echocode:
+    if: inputs.echocode_version != ''
+    name: Publish EchoCode
+    needs: build-echocode
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec sh -c '
+            for f; do sha256sum "$f" | sed "s|  .*/|  |" >> checksums.sha256; done
+          ' _ {} +
+          cat checksums.sha256
+
+      - name: Create EchoCode release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: echocode-v${{ inputs.echocode_version }}
+          name: EchoCode v${{ inputs.echocode_version }}
+          body: |
+            ## EchoCode v${{ inputs.echocode_version }}
+
+            ### Download
+
+            | Platform | Archive |
+            |----------|---------|
+            | Windows x64 | `echocode-windows-x64.zip` |
+            | Linux x64 | `echocode-linux-x64.tar.gz` |
+            | macOS ARM64 | `echocode-darwin-arm64.tar.gz` |
           files: |
             artifacts/**/*
 

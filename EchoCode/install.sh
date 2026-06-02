@@ -1,10 +1,10 @@
 #!/bin/sh
-# EchoAI installer — downloads the latest release binary for your platform.
-# Usage: curl -fsSL https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoAI/install.sh | sh
+# EchoCode installer — downloads the latest release binary for your platform.
+# Usage: curl -fsSL https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoCode/install.sh | sh
 set -e
 
 REPO="EchoWorker/EchoAIStore"
-INSTALL_DIR="${ECHOAI_INSTALL_DIR:-$HOME/.echoai/bin}"
+INSTALL_DIR="${ECHOCODE_INSTALL_DIR:-$HOME/.echoai/bin}"
 
 # Detect platform
 OS="$(uname -s)"
@@ -22,19 +22,19 @@ case "$ARCH" in
   *)             echo "Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
-ARCHIVE="echoai-${os_name}-${arch_name}.tar.gz"
+ARCHIVE="echocode-${os_name}-${arch_name}.tar.gz"
 
-# Get latest EchoAI release (filter by echoai- tag prefix)
+# Get latest EchoCode release (filter by echocode- tag prefix)
 echo "Fetching latest release..."
 VERSION=$(curl -s "https://api.github.com/repos/$REPO/releases" | \
-  grep '"tag_name"' | grep '"echoai-' | head -1 | cut -d'"' -f4)
+  grep '"tag_name"' | grep '"echocode-' | head -1 | cut -d'"' -f4)
 if [ -z "$VERSION" ]; then
-  echo "Error: Could not find any EchoAI release"
+  echo "Error: Could not find any EchoCode release"
   exit 1
 fi
 
 URL="https://github.com/$REPO/releases/download/$VERSION/$ARCHIVE"
-echo "Downloading EchoAI $VERSION ($os_name/$arch_name)..."
+echo "Downloading EchoCode $VERSION ($os_name/$arch_name)..."
 
 # Download and extract
 TMPDIR=$(mktemp -d)
@@ -43,12 +43,12 @@ tar xzf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
 
 # Install
 mkdir -p "$INSTALL_DIR"
-mv "$TMPDIR/echoai" "$INSTALL_DIR/echoai"
-chmod +x "$INSTALL_DIR/echoai"
+mv "$TMPDIR/echo-code" "$INSTALL_DIR/echo-code"
+chmod +x "$INSTALL_DIR/echo-code"
 rm -rf "$TMPDIR"
 
 echo ""
-echo "✅ EchoAI $VERSION installed to $INSTALL_DIR/echoai"
+echo "✅ EchoCode $VERSION installed to $INSTALL_DIR/echo-code"
 
 # Check PATH
 case ":$PATH:" in
@@ -80,5 +80,4 @@ fi
 echo ""
 echo "Get started:"
 echo "  1. Edit ~/.echoai/echocode.toml — set your API key and model"
-echo "  2. echoai gateway    # Start the server"
-echo "  3. echoai agent      # Interactive REPL"
+echo "  2. echo-code                     # Start interactive session"

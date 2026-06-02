@@ -2,13 +2,11 @@
 
 **An AI-native desktop IDE built with [Tauri](https://tauri.app/) + React.**
 
-EchoWork is the visual interface for the EchoAI ecosystem. It connects to the EchoAI backend (which hosts the [EchoCode](https://github.com/EchoWorker/EchoCodeRust) agent engine), giving you an integrated development environment where AI assists with coding, file management, Git workflows, and project exploration — all in a native desktop app.
+EchoWork is the visual interface for the EchoAI ecosystem. It bundles the [EchoAI](../EchoAI/) backend (which hosts the [EchoCode](../EchoCode/) agent engine), giving you an integrated development environment where AI assists with coding, file management, Git workflows, and project exploration — all in a native desktop app.
 
 <p align="center">
-  <img src="images/main-workspace.png" alt="EchoWork main workspace" width="900" />
+  <img src="../images/echowork-main-workspace.png" alt="EchoWork main workspace" width="900" />
 </p>
-
-> **Prerequisites**: EchoWork requires the [EchoAI](../EchoAI/) backend. Install it before running EchoWork.
 
 ---
 
@@ -87,7 +85,7 @@ The updater verifies signatures with a Tauri-managed key, independent of OS code
 
 | Layer | Role |
 |---|---|
-| **[EchoCode](https://github.com/EchoWorker/EchoCodeRust)** | Rust AI agent engine — LLM protocols, 17 tools, compaction, sessions, hooks |
+| **[EchoCode](../EchoCode/)** | Rust AI agent engine — LLM protocols, 17 tools, compaction, sessions, hooks |
 | **[EchoAI](../EchoAI/)** | Service layer — multi-session management, DB persistence, WebSocket API, plugin host |
 | **EchoWork** (this) | Desktop IDE — file explorer, Git, chat, code preview |
 

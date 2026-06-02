@@ -1,19 +1,19 @@
-# EchoAI installer for Windows
-# Usage: irm https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoAI/install.ps1 | iex
+# EchoCode installer for Windows
+# Usage: irm https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoCode/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
 $repo = "EchoWorker/EchoAIStore"
-$installDir = if ($env:ECHOAI_INSTALL_DIR) { $env:ECHOAI_INSTALL_DIR } else { "$env:USERPROFILE\.echoai\bin" }
-$archive = "echoai-windows-x64.zip"
+$installDir = if ($env:ECHOCODE_INSTALL_DIR) { $env:ECHOCODE_INSTALL_DIR } else { "$env:USERPROFILE\.echoai\bin" }
+$archive = "echocode-windows-x64.zip"
 
-# Get latest EchoAI release (filter by echoai- tag prefix)
+# Get latest EchoCode release (filter by echocode- tag prefix)
 Write-Host "Fetching latest release..."
 $releases = Invoke-RestMethod "https://api.github.com/repos/$repo/releases"
-$release = $releases | Where-Object { $_.tag_name -like "echoai-*" } | Select-Object -First 1
+$release = $releases | Where-Object { $_.tag_name -like "echocode-*" } | Select-Object -First 1
 
 if (-not $release) {
-    Write-Error "Could not find any EchoAI release"
+    Write-Error "Could not find any EchoCode release"
     exit 1
 }
 
@@ -26,7 +26,7 @@ if (-not $asset) {
 }
 
 $url = $asset.browser_download_url
-Write-Host "Downloading EchoAI $version..."
+Write-Host "Downloading EchoCode $version..."
 
 # Download and extract
 $tmp = New-TemporaryFile | Rename-Item -NewName { $_.Name + ".zip" } -PassThru
@@ -37,7 +37,7 @@ Expand-Archive -Path $tmp.FullName -DestinationPath $installDir -Force
 Remove-Item $tmp.FullName
 
 Write-Host ""
-Write-Host "✅ EchoAI $version installed to $installDir\echoai.exe" -ForegroundColor Green
+Write-Host "✅ EchoCode $version installed to $installDir\echo-code.exe" -ForegroundColor Green
 
 # Add to PATH if not already there
 $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -67,5 +67,4 @@ if (-not (Test-Path "$configDir\echocode.toml")) {
 Write-Host ""
 Write-Host "Get started:"
 Write-Host "  1. Edit ~/.echoai/echocode.toml — set your API key and model"
-Write-Host "  2. echoai gateway    # Start the server"
-Write-Host "  3. echoai agent      # Interactive REPL"
+Write-Host "  2. echo-code                     # Start interactive session"
