@@ -5,7 +5,7 @@
 EchoWork is the visual interface for the EchoAI ecosystem. It connects to the EchoAI backend (which hosts the [EchoCode](https://github.com/EchoWorker/EchoCodeRust) agent engine), giving you an integrated development environment where AI assists with coding, file management, Git workflows, and project exploration — all in a native desktop app.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/EchoWorker/EchoWork/main/docs/images/main-workspace.png" alt="EchoWork main workspace" width="900" />
+  <img src="images/main-workspace.png" alt="EchoWork main workspace" width="900" />
 </p>
 
 > **Prerequisites**: EchoWork requires the [EchoAI](../EchoAI/) backend. Install it before running EchoWork.
