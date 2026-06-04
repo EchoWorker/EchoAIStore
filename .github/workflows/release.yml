@@ -96,18 +96,23 @@ jobs:
       - name: Download fastembed model
         working-directory: EchoAI
         shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           set -eo pipefail
           MODEL_DIR="models/models--Xenova--bge-small-en-v1.5"
           SNAP_DIR="$MODEL_DIR/snapshots/ea104dacec62c0de699686887e3f920caeb4f3e3"
           mkdir -p "$SNAP_DIR/onnx" "$MODEL_DIR/refs" "$MODEL_DIR/blobs"
           BASE_URL="https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main"
-          CURL="curl -fsSL --retry 10 --retry-delay 10 --retry-all-errors"
-          $CURL "$BASE_URL/onnx/model.onnx"          -o "$SNAP_DIR/onnx/model.onnx"
-          $CURL "$BASE_URL/config.json"               -o "$SNAP_DIR/config.json"
-          $CURL "$BASE_URL/tokenizer.json"            -o "$SNAP_DIR/tokenizer.json"
-          $CURL "$BASE_URL/tokenizer_config.json"     -o "$SNAP_DIR/tokenizer_config.json"
-          $CURL "$BASE_URL/special_tokens_map.json"   -o "$SNAP_DIR/special_tokens_map.json"
+          CURL_ARGS=(-fsSL --retry 10 --retry-delay 10 --retry-all-errors)
+          if [ -n "$HF_TOKEN" ]; then
+            CURL_ARGS+=(-H "Authorization: Bearer $HF_TOKEN")
+          fi
+          curl "${CURL_ARGS[@]}" "$BASE_URL/onnx/model.onnx"          -o "$SNAP_DIR/onnx/model.onnx"
+          curl "${CURL_ARGS[@]}" "$BASE_URL/config.json"               -o "$SNAP_DIR/config.json"
+          curl "${CURL_ARGS[@]}" "$BASE_URL/tokenizer.json"            -o "$SNAP_DIR/tokenizer.json"
+          curl "${CURL_ARGS[@]}" "$BASE_URL/tokenizer_config.json"     -o "$SNAP_DIR/tokenizer_config.json"
+          curl "${CURL_ARGS[@]}" "$BASE_URL/special_tokens_map.json"   -o "$SNAP_DIR/special_tokens_map.json"
           echo -n "ea104dacec62c0de699686887e3f920caeb4f3e3" > "$MODEL_DIR/refs/main"
           echo "Model files downloaded:"
           find models -type f | head -20
