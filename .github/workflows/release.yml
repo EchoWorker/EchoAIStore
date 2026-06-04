@@ -102,7 +102,7 @@ jobs:
           SNAP_DIR="$MODEL_DIR/snapshots/ea104dacec62c0de699686887e3f920caeb4f3e3"
           mkdir -p "$SNAP_DIR/onnx" "$MODEL_DIR/refs" "$MODEL_DIR/blobs"
           BASE_URL="https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main"
-          CURL="curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors"
+          CURL="curl -fsSL --retry 10 --retry-delay 10 --retry-all-errors"
           $CURL "$BASE_URL/onnx/model.onnx"          -o "$SNAP_DIR/onnx/model.onnx"
           $CURL "$BASE_URL/config.json"               -o "$SNAP_DIR/config.json"
           $CURL "$BASE_URL/tokenizer.json"            -o "$SNAP_DIR/tokenizer.json"
