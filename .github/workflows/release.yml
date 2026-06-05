@@ -356,6 +356,14 @@ jobs:
           echo "=== EchoAI version ==="
           cat src-tauri/echoai/version
 
+          # Bundle builtin plugin (echowork-plugin/) into echoai/plugins/echowork/
+          if [ -d "echowork-plugin" ]; then
+            mkdir -p src-tauri/echoai/plugins/echowork
+            cp -r echowork-plugin/* src-tauri/echoai/plugins/echowork/
+            echo "=== Bundled echowork plugin ==="
+            find src-tauri/echoai/plugins -type f
+          fi
+
       - name: Sign bundled echoai binary (macOS)
         if: runner.os == 'macOS'
         run: |
