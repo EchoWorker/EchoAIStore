@@ -104,7 +104,7 @@ jobs:
           SNAP_DIR="$MODEL_DIR/snapshots/ea104dacec62c0de699686887e3f920caeb4f3e3"
           mkdir -p "$SNAP_DIR/onnx" "$MODEL_DIR/refs" "$MODEL_DIR/blobs"
           BASE_URL="https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main"
-          CURL_ARGS=(-fsSL --retry 10 --retry-delay 10 --retry-all-errors)
+          CURL_ARGS=(-fsSL --retry 20 --retry-delay 30 --retry-max-time 600 --retry-all-errors)
           if [ -n "$HF_TOKEN" ]; then
             CURL_ARGS+=(-H "Authorization: Bearer $HF_TOKEN")
           fi
