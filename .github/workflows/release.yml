@@ -285,15 +285,18 @@ jobs:
 
       # EchoWork's Tauri backend depends on `ooxml-facade` from the PRIVATE
       # EchoWorker/OfficeCli repo as a pinned git dependency (ssh:// URL).
-      # CI has no SSH key for it, so rewrite that URL to authenticated HTTPS
-      # using REPO_ACCESS_TOKEN (the same PAT used to checkout private repos
-      # above). Combined with `net.git-fetch-with-cli = true` in EchoWork's
-      # src-tauri/.cargo/config.toml, cargo delegates the fetch to the system
-      # git, which applies this insteadOf rewrite. Local dev is unaffected
-      # (no such rewrite there -> plain ssh key).
+      # CI has no SSH key for it, so:
+      #   1) force cargo to delegate git fetches to the system `git` CLI
+      #      (CARGO_NET_GIT_FETCH_WITH_CLI=true), because relying on
+      #      src-tauri/.cargo/config.toml discovery isn't reliable when the
+      #      working directory is the repo root — env is unconditional.
+      #   2) rewrite the ssh:// URL to authenticated HTTPS with
+      #      REPO_ACCESS_TOKEN so the system git can actually clone.
+      # Local dev is unaffected (no such env / insteadOf there -> plain ssh key).
       - name: Authenticate cargo git deps (private OfficeCli)
         shell: bash
         run: |
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
           git config --global \
             url."https://x-access-token:${{ secrets.REPO_ACCESS_TOKEN }}@github.com/".insteadOf \
             "ssh://git@github.com/"
