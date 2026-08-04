@@ -466,11 +466,21 @@ jobs:
           cat src-tauri/echoai/version
 
           # Bundle builtin plugin (echowork-plugin/) into echoai/plugins/echowork/
+          #
+          # The target is wiped first: `cp -r` only adds and overwrites, it never
+          # removes. Anything already sitting there (an earlier EchoAI artifact, a
+          # cached workspace) survives forever — which is how skills deleted or
+          # renamed in the repo, e.g. app-dev -> app-builder, kept shipping to users
+          # long after they were gone from source. The repo is the only source of
+          # truth for this directory.
           if [ -d "echowork-plugin" ]; then
+            rm -rf src-tauri/echoai/plugins/echowork
             mkdir -p src-tauri/echoai/plugins/echowork
             cp -r echowork-plugin/* src-tauri/echoai/plugins/echowork/
             echo "=== Bundled echowork plugin ==="
             find src-tauri/echoai/plugins -type f
+            echo "=== Bundled skills (must match echowork-plugin/skills/) ==="
+            ls -1 src-tauri/echoai/plugins/echowork/skills
           fi
 
       - name: Sign bundled echoai binary (macOS)
