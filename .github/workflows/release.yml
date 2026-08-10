@@ -10,10 +10,6 @@ on:
         description: 'EchoAI version (e.g. 0.3.0, leave empty to skip)'
         required: false
         type: string
-      source_refs:
-        description: 'JSON with echoai_ref, echocode_ref, echomemory_ref, echowork_ref and officecli_ref commit SHAs'
-        required: false
-        type: string
       echocode_version:
         description: 'EchoCode version (e.g. 0.1.0, leave empty to skip)'
         required: false
@@ -45,43 +41,55 @@ permissions:
   contents: write
 
 jobs:
-  validate-product-refs:
-    if: github.event_name == 'workflow_dispatch' && (inputs.echoai_version != '' || inputs.echocode_version != '' || inputs.echowork_version != '' || inputs.officecli_version != '' || inputs.echoai_resources_version != '')
+  resolve-source-refs:
     runs-on: ubuntu-latest
+    outputs:
+      echoai_ref: ${{ steps.resolve.outputs.echoai_ref }}
+      echocode_ref: ${{ steps.resolve.outputs.echocode_ref }}
+      echomemory_ref: ${{ steps.resolve.outputs.echomemory_ref }}
+      echowork_ref: ${{ steps.resolve.outputs.echowork_ref }}
+      officecli_ref: ${{ steps.resolve.outputs.officecli_ref }}
     steps:
-      - name: Require immutable product source refs
+      - name: Resolve selected product source refs
+        id: resolve
+        if: github.event_name == 'workflow_dispatch'
         env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
           ECHOAI_VERSION: ${{ inputs.echoai_version }}
           ECHOCODE_VERSION: ${{ inputs.echocode_version }}
           ECHOWORK_VERSION: ${{ inputs.echowork_version }}
           OFFICECLI_VERSION: ${{ inputs.officecli_version }}
           RESOURCES_VERSION: ${{ inputs.echoai_resources_version }}
-          SOURCE_REFS: ${{ inputs.source_refs }}
         run: |
           set -euo pipefail
-          jq -e 'type == "object"' <<< "$SOURCE_REFS" >/dev/null || {
-            echo 'source_refs must be a JSON object' >&2; exit 1;
+          resolve() {
+            local output="$1" repo="$2" sha
+            sha=$(gh api "repos/EchoWorker/${repo}/git/ref/heads/main" --jq '.object.sha')
+            echo "${output}=${sha}" >> "$GITHUB_OUTPUT"
+            echo "- ${repo}: \`${sha}\`" >> "$GITHUB_STEP_SUMMARY"
           }
-          ECHOAI_REF=$(jq -r '.echoai_ref // ""' <<< "$SOURCE_REFS")
-          ECHOCODE_REF=$(jq -r '.echocode_ref // ""' <<< "$SOURCE_REFS")
-          ECHOMEMORY_REF=$(jq -r '.echomemory_ref // ""' <<< "$SOURCE_REFS")
-          ECHOWORK_REF=$(jq -r '.echowork_ref // ""' <<< "$SOURCE_REFS")
-          OFFICECLI_REF=$(jq -r '.officecli_ref // ""' <<< "$SOURCE_REFS")
-          require_sha() {
-            local name="$1" value="$2"
-            [[ "$value" =~ ^[0-9a-fA-F]{40}$ ]] || {
-              echo "$name must be a non-empty 40-character commit SHA" >&2; exit 1;
-            }
-          }
+          echo '### Resolved source refs' >> "$GITHUB_STEP_SUMMARY"
           if [[ -n "$ECHOAI_VERSION" || -n "$ECHOCODE_VERSION" || -n "$RESOURCES_VERSION" ]]; then
-            require_sha echoai_ref "$ECHOAI_REF"
+            resolve echoai_ref EchoAI
           fi
           if [[ -n "$ECHOAI_VERSION" || -n "$ECHOCODE_VERSION" ]]; then
-            require_sha echocode_ref "$ECHOCODE_REF"
-            require_sha echomemory_ref "$ECHOMEMORY_REF"
+            resolve echocode_ref EchoCodeRust
+            resolve echomemory_ref EchoMemoryRust
           fi
-          if [[ -n "$ECHOWORK_VERSION" ]]; then require_sha echowork_ref "$ECHOWORK_REF"; fi
-          if [[ -n "$OFFICECLI_VERSION" ]]; then require_sha officecli_ref "$OFFICECLI_REF"; fi
+          if [[ -n "$ECHOWORK_VERSION" ]]; then resolve echowork_ref EchoWork; fi
+          if [[ -n "$OFFICECLI_VERSION" ]]; then resolve officecli_ref OfficeCli; fi
+
+  validate-product-refs:
+    if: github.event_name == 'workflow_dispatch' && (inputs.echoai_version != '' || inputs.echocode_version != '' || inputs.echowork_version != '' || inputs.officecli_version != '' || inputs.echoai_resources_version != '')
+    needs: resolve-source-refs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate product release conditions
+        env:
+          ECHOAI_VERSION: ${{ inputs.echoai_version }}
+          RESOURCES_VERSION: ${{ inputs.echoai_resources_version }}
+        run: |
+          set -euo pipefail
           if [[ -n "$ECHOAI_VERSION" && -z "$RESOURCES_VERSION" ]]; then
             echo 'echoai_resources_version is required for an EchoAI product release so generated specs can be verified' >&2
             exit 1
@@ -183,7 +191,7 @@ jobs:
 
   generate-echoai-resource-specs:
     if: github.event_name == 'push' || inputs.echoai_resources_version != ''
-    needs: assemble-resource-release
+    needs: [resolve-source-refs, assemble-resource-release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -194,7 +202,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: EchoWorker/EchoAI
-          ref: ${{ fromJSON(inputs.source_refs || '{}').echoai_ref }}
+          ref: ${{ needs.resolve-source-refs.outputs.echoai_ref }}
           path: EchoAI
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
       - uses: actions/download-artifact@v4
@@ -209,7 +217,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "EchoAI requested ref: ${{ fromJSON(inputs.source_refs || '{}').echoai_ref }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "EchoAI resolved ref: ${{ needs.resolve-source-refs.outputs.echoai_ref }}" >> "$GITHUB_STEP_SUMMARY"
           echo "EchoAI actual SHA: $(git -C EchoAI rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
           test -f EchoAI/src/resources/generated.rs || {
             echo 'EchoAI/src/resources/generated.rs is missing' >&2; exit 1;
@@ -249,7 +257,7 @@ jobs:
   build-echoai:
     if: github.event_name == 'workflow_dispatch' && inputs.echoai_version != ''
     name: EchoAI (${{ matrix.target }})
-    needs: [validate-product-refs, generate-echoai-resource-specs]
+    needs: [resolve-source-refs, validate-product-refs, generate-echoai-resource-specs]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -272,21 +280,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: EchoWorker/EchoAI
-          ref: ${{ fromJSON(inputs.source_refs || '{}').echoai_ref }}
+          ref: ${{ needs.resolve-source-refs.outputs.echoai_ref }}
           path: EchoAI
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
       - uses: actions/checkout@v4
         with:
           repository: EchoWorker/EchoCodeRust
-          ref: ${{ fromJSON(inputs.source_refs || '{}').echocode_ref }}
+          ref: ${{ needs.resolve-source-refs.outputs.echocode_ref }}
           path: EchoCodeRust
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
       - uses: actions/checkout@v4
         with:
           repository: EchoWorker/EchoMemoryRust
-          ref: ${{ fromJSON(inputs.source_refs || '{}').echomemory_ref }}
+          ref: ${{ needs.resolve-source-refs.outputs.echomemory_ref }}
           path: EchoMemoryRust
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
@@ -376,7 +384,7 @@ jobs:
   build-echocode:
     if: github.event_name == 'workflow_dispatch' && inputs.echocode_version != ''
     name: EchoCode (${{ matrix.target }})
-    needs: validate-product-refs
+    needs: [resolve-source-refs, validate-product-refs]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -399,21 +407,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: EchoWorker/EchoCodeRust
-          ref: ${{ fromJSON(inputs.source_refs || '{}').echocode_ref }}
+          ref: ${{ needs.resolve-source-refs.outputs.echocode_ref }}
           path: EchoCodeRust
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
       - uses: actions/checkout@v4
         with:
           repository: EchoWorker/EchoAI
-          ref: ${{ fromJSON(inputs.source_refs || '{}').echoai_ref }}
+          ref: ${{ needs.resolve-source-refs.outputs.echoai_ref }}
           path: EchoAI
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
       - uses: actions/checkout@v4
         with:
           repository: EchoWorker/EchoMemoryRust
-          ref: ${{ fromJSON(inputs.source_refs || '{}').echomemory_ref }}
+          ref: ${{ needs.resolve-source-refs.outputs.echomemory_ref }}
           path: EchoMemoryRust
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
@@ -492,7 +500,7 @@ jobs:
   build-officecli:
     if: github.event_name == 'workflow_dispatch' && inputs.officecli_version != ''
     name: OfficeCli (${{ matrix.target }})
-    needs: validate-product-refs
+    needs: [resolve-source-refs, validate-product-refs]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -515,7 +523,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: EchoWorker/OfficeCli
-          ref: ${{ fromJSON(inputs.source_refs || '{}').officecli_ref }}
+          ref: ${{ needs.resolve-source-refs.outputs.officecli_ref }}
           path: OfficeCli
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
@@ -588,7 +596,7 @@ jobs:
   build-echowork:
     if: ${{ github.event_name == 'workflow_dispatch' && !failure() && !cancelled() && inputs.echowork_version != '' }}
     name: EchoWork (${{ matrix.platform }})
-    needs: [validate-product-refs, build-echoai]
+    needs: [resolve-source-refs, validate-product-refs, build-echoai]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -608,7 +616,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: EchoWorker/EchoWork
-          ref: ${{ fromJSON(inputs.source_refs || '{}').echowork_ref }}
+          ref: ${{ needs.resolve-source-refs.outputs.echowork_ref }}
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
       - name: Record source provenance
