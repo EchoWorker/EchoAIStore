@@ -22,21 +22,6 @@ on:
         description: 'OfficeCli version (e.g. 0.1.0, leave empty to skip)'
         required: false
         type: string
-      echoai_resources_version:
-        description: 'Immutable Resources release version (e.g. 1.0.0, leave empty to skip)'
-        required: false
-        type: string
-      echoai_resources_publish:
-        description: 'Publish the Resources release after verification'
-        required: false
-        default: false
-        type: boolean
-      echoai_resources_prerelease:
-        description: 'Mark the Resources release as a prerelease'
-        required: false
-        default: false
-        type: boolean
-
 permissions:
   contents: write
 
@@ -59,7 +44,6 @@ jobs:
           ECHOCODE_VERSION: ${{ inputs.echocode_version }}
           ECHOWORK_VERSION: ${{ inputs.echowork_version }}
           OFFICECLI_VERSION: ${{ inputs.officecli_version }}
-          RESOURCES_VERSION: ${{ inputs.echoai_resources_version }}
         run: |
           set -euo pipefail
           resolve() {
@@ -69,7 +53,7 @@ jobs:
             echo "- ${repo}: \`${sha}\`" >> "$GITHUB_STEP_SUMMARY"
           }
           echo '### Resolved source refs' >> "$GITHUB_STEP_SUMMARY"
-          if [[ -n "$ECHOAI_VERSION" || -n "$ECHOCODE_VERSION" || -n "$RESOURCES_VERSION" ]]; then
+          if [[ -n "$ECHOAI_VERSION" || -n "$ECHOCODE_VERSION" ]]; then
             resolve echoai_ref EchoAI
           fi
           if [[ -n "$ECHOAI_VERSION" || -n "$ECHOCODE_VERSION" ]]; then
@@ -79,27 +63,46 @@ jobs:
           if [[ -n "$ECHOWORK_VERSION" ]]; then resolve echowork_ref EchoWork; fi
           if [[ -n "$OFFICECLI_VERSION" ]]; then resolve officecli_ref OfficeCli; fi
 
-  validate-product-refs:
-    if: github.event_name == 'workflow_dispatch' && (inputs.echoai_version != '' || inputs.echocode_version != '' || inputs.echowork_version != '' || inputs.officecli_version != '' || inputs.echoai_resources_version != '')
+  validate-pinned-echoai-resources:
+    if: github.event_name == 'workflow_dispatch' && (inputs.echoai_version != '' || inputs.echocode_version != '')
     needs: resolve-source-refs
     runs-on: ubuntu-latest
     steps:
-      - name: Validate product release conditions
+      - uses: actions/checkout@v4
+        with:
+          path: EchoAIStore
+      - uses: actions/checkout@v4
+        with:
+          repository: EchoWorker/EchoAI
+          ref: ${{ needs.resolve-source-refs.outputs.echoai_ref }}
+          path: EchoAI
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+      - name: Verify EchoAI's pinned Resources release
         env:
-          ECHOAI_VERSION: ${{ inputs.echoai_version }}
-          RESOURCES_VERSION: ${{ inputs.echoai_resources_version }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
-          if [[ -n "$ECHOAI_VERSION" && -z "$RESOURCES_VERSION" ]]; then
-            echo 'echoai_resources_version is required for an EchoAI product release so generated specs can be verified' >&2
-            exit 1
-          fi
+          GENERATED=EchoAI/src/resources/generated.rs
+          test -f "$GENERATED" || { echo "$GENERATED is missing" >&2; exit 1; }
+          TAG=$(python - "$GENERATED" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8").read()
+          tags = set(re.findall(r'https://github\.com/EchoWorker/EchoAIStore/releases/download/(echoai-resources-v[^/" ]+)/', text))
+          if len(tags) != 1:
+              raise SystemExit(f"expected exactly one pinned EchoAI Resources release tag, found: {sorted(tags)}")
+          print(tags.pop())
+          PY
+          )
+          echo "Pinned Resources release: $TAG" >> "$GITHUB_STEP_SUMMARY"
+          mkdir release-files
+          gh release download "$TAG" --repo EchoWorker/EchoAIStore --pattern manifest.json --dir release-files
+          python EchoAIStore/scripts/resources/generate_rust.py --manifest release-files/manifest.json --output candidate.rs
+          cmp candidate.rs "$GENERATED"
 
-  # ─────────────────────────────────────────────
-  # Unified managed Resources Release
-  # ─────────────────────────────────────────────
+  # Tag-only managed Resources Release
   validate-resource-release:
-    if: github.event_name == 'push' || inputs.echoai_resources_version != ''
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -110,30 +113,18 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          DISPATCH_VERSION: ${{ inputs.echoai_resources_version }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            TAG="$GITHUB_REF_NAME"
-            [[ "$TAG" =~ ^echoai-resources-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] || {
-              echo "Invalid Resources release tag: $TAG" >&2; exit 1;
-            }
-            VERSION="${TAG#echoai-resources-v}"
-            [[ "$(git rev-parse "$TAG^{commit}")" == "$GITHUB_SHA" ]] || {
-              echo "Trigger tag does not resolve to GITHUB_SHA" >&2; exit 1;
-            }
-            if gh release view "$TAG" >/dev/null 2>&1; then
-              echo "Immutable Resources release already exists: $TAG" >&2; exit 1
-            fi
-          else
-            VERSION="$DISPATCH_VERSION"
-            [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] || {
-              echo "Invalid Resources release version: $VERSION" >&2; exit 1;
-            }
-            TAG="echoai-resources-v${VERSION}"
-            if gh release view "$TAG" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-              echo "Resource tag already exists: $TAG" >&2; exit 1
-            fi
+          TAG="$GITHUB_REF_NAME"
+          [[ "$TAG" =~ ^echoai-resources-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] || {
+            echo "Invalid Resources release tag: $TAG" >&2; exit 1;
+          }
+          VERSION="${TAG#echoai-resources-v}"
+          [[ "$(git rev-parse "$TAG^{commit}")" == "$GITHUB_SHA" ]] || {
+            echo "Trigger tag does not resolve to GITHUB_SHA" >&2; exit 1;
+          }
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Immutable Resources release already exists: $TAG" >&2; exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           python scripts/resources/verify.py --catalog resources/catalog.json
@@ -141,7 +132,7 @@ jobs:
         run: echo "matrix=$(jq -c '[.resources[].id]' resources/catalog.json)" >> "$GITHUB_OUTPUT"
 
   package-resources:
-    if: github.event_name == 'push' || inputs.echoai_resources_version != ''
+    if: github.event_name == 'push'
     needs: validate-resource-release
     runs-on: ubuntu-latest
     strategy:
@@ -165,7 +156,7 @@ jobs:
           if-no-files-found: error
 
   assemble-resource-release:
-    if: github.event_name == 'push' || inputs.echoai_resources_version != ''
+    if: github.event_name == 'push'
     needs: [validate-resource-release, package-resources]
     runs-on: ubuntu-latest
     steps:
@@ -190,21 +181,13 @@ jobs:
           if-no-files-found: error
 
   generate-echoai-resource-specs:
-    if: github.event_name == 'push' || inputs.echoai_resources_version != ''
-    needs: [resolve-source-refs, assemble-resource-release]
+    if: github.event_name == 'push'
+    needs: assemble-resource-release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           path: EchoAIStore
-      - name: Checkout pinned EchoAI for product verification
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v4
-        with:
-          repository: EchoWorker/EchoAI
-          ref: ${{ needs.resolve-source-refs.outputs.echoai_ref }}
-          path: EchoAI
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
       - uses: actions/download-artifact@v4
         with:
           name: resources-release
@@ -212,17 +195,6 @@ jobs:
       - run: python EchoAIStore/scripts/resources/verify.py --catalog EchoAIStore/resources/catalog.json --manifest release-files/manifest.json --assets release-files
       - name: Generate Rust candidate from target manifest
         run: python EchoAIStore/scripts/resources/generate_rust.py --manifest release-files/manifest.json --output generated.rs
-      - name: Compare candidate with pinned EchoAI
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "EchoAI resolved ref: ${{ needs.resolve-source-refs.outputs.echoai_ref }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "EchoAI actual SHA: $(git -C EchoAI rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
-          test -f EchoAI/src/resources/generated.rs || {
-            echo 'EchoAI/src/resources/generated.rs is missing' >&2; exit 1;
-          }
-          cmp generated.rs EchoAI/src/resources/generated.rs
       - uses: actions/upload-artifact@v4
         with:
           name: echoai-resource-specs-candidate
@@ -230,7 +202,7 @@ jobs:
           if-no-files-found: error
 
   publish-resource-release:
-    if: github.event_name == 'push' || (inputs.echoai_resources_version != '' && inputs.echoai_resources_publish)
+    if: github.event_name == 'push'
     needs: [validate-resource-release, generate-echoai-resource-specs]
     runs-on: ubuntu-latest
     steps:
@@ -245,7 +217,9 @@ jobs:
         run: |
           set -euo pipefail
           TAG='echoai-resources-v${{ needs.validate-resource-release.outputs.version }}'
-          gh release create "$TAG" --title "EchoAI Resources v${{ needs.validate-resource-release.outputs.version }}" ${{ inputs.echoai_resources_prerelease && '--prerelease' || '' }} \
+          PRERELEASE=()
+          [[ "$TAG" == *-* ]] && PRERELEASE+=(--prerelease)
+          gh release create "$TAG" --title "EchoAI Resources v${{ needs.validate-resource-release.outputs.version }}" "${PRERELEASE[@]}" \
             release-files/echoai-resource-*.tar.bz2 release-files/manifest.json release-files/SHA256SUMS
           mkdir downloaded
           gh release download "$TAG" --pattern 'echoai-resource-*.tar.bz2' --pattern manifest.json --pattern SHA256SUMS --dir downloaded
@@ -257,7 +231,7 @@ jobs:
   build-echoai:
     if: github.event_name == 'workflow_dispatch' && inputs.echoai_version != ''
     name: EchoAI (${{ matrix.target }})
-    needs: [resolve-source-refs, validate-product-refs, generate-echoai-resource-specs]
+    needs: [resolve-source-refs, validate-pinned-echoai-resources]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -384,7 +358,7 @@ jobs:
   build-echocode:
     if: github.event_name == 'workflow_dispatch' && inputs.echocode_version != ''
     name: EchoCode (${{ matrix.target }})
-    needs: [resolve-source-refs, validate-product-refs]
+    needs: [resolve-source-refs, validate-pinned-echoai-resources]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -500,7 +474,7 @@ jobs:
   build-officecli:
     if: github.event_name == 'workflow_dispatch' && inputs.officecli_version != ''
     name: OfficeCli (${{ matrix.target }})
-    needs: [resolve-source-refs, validate-product-refs]
+    needs: resolve-source-refs
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -596,7 +570,7 @@ jobs:
   build-echowork:
     if: ${{ github.event_name == 'workflow_dispatch' && !failure() && !cancelled() && inputs.echowork_version != '' }}
     name: EchoWork (${{ matrix.platform }})
-    needs: [resolve-source-refs, validate-product-refs, build-echoai]
+    needs: [resolve-source-refs, build-echoai]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
