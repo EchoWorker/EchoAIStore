@@ -4,46 +4,46 @@ on:
   workflow_dispatch:
     inputs:
       resource_version:
-        description: 'Resource version (SemVer, e.g. 1.0.1 or 1.0.1-rc.1)'
+        description: 'Resource version (strict SemVer, e.g. 1.0.1 or 1.0.1-rc.1)'
         required: true
         type: string
       prerelease:
-        description: 'Publish as a prerelease (version must contain a prerelease suffix)'
+        description: 'Publish as a prerelease (must match whether the version has a prerelease suffix)'
         required: true
         default: false
         type: boolean
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: release-echoai-resources-${{ inputs.resource_version }}
   cancel-in-progress: false
 
 jobs:
-  create-release-tag:
-    name: Create resource release tag
+  validate-resource-release:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
     steps:
-      - name: Validate request and create tag at main HEAD
-        id: tag
+      - uses: actions/checkout@v4
+      - name: Validate version, release identity and catalog
+        id: release
         env:
-          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           VERSION: ${{ inputs.resource_version }}
           PRERELEASE: ${{ inputs.prerelease }}
         shell: bash
         run: |
           set -euo pipefail
-
-          # SemVer 2.0.0 without build metadata. The downstream release tag
-          # contract intentionally does not accept '+' build metadata either.
           SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?$'
           [[ "$VERSION" =~ $SEMVER_RE ]] || {
             echo "Invalid resource version: $VERSION (expected strict SemVer without build metadata)" >&2
             exit 1
           }
-
           if [[ "$VERSION" == *-* ]]; then
             [[ "$PRERELEASE" == 'true' ]] || {
               echo "Version $VERSION has a prerelease suffix, so prerelease must be enabled." >&2
@@ -51,21 +51,16 @@ jobs:
             }
           else
             [[ "$PRERELEASE" == 'false' ]] || {
-              echo "Prerelease requires a SemVer prerelease suffix (for example: ${VERSION}-rc.1)." >&2
+              echo "Prerelease requires a SemVer prerelease suffix." >&2
               exit 1
             }
           fi
-
           TAG="echoai-resources-v${VERSION}"
-
           assert_absent() {
             local kind="$1" endpoint="$2" response status
             response=$(mktemp)
-            if gh api --include "$endpoint" >"$response" 2>/dev/null; then
-              status=$(awk '/^HTTP\// { code=$2 } END { print code }' "$response")
-            else
-              status=$(awk '/^HTTP\// { code=$2 } END { print code }' "$response")
-            fi
+            gh api --include "$endpoint" >"$response" 2>&1 || true
+            status=$(awk '/^HTTP\// { code=$2 } END { print code }' "$response")
             rm -f "$response"
             case "$status" in
               404) ;;
@@ -73,51 +68,116 @@ jobs:
               *) echo "Could not safely verify that $kind is absent (HTTP ${status:-unknown})." >&2; exit 1 ;;
             esac
           }
-
           assert_absent 'Tag' "repos/${REPOSITORY}/git/ref/tags/${TAG}"
           assert_absent 'Release' "repos/${REPOSITORY}/releases/tags/${TAG}"
-
-          MAIN_SHA=$(gh api "repos/${REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
-          [[ "$MAIN_SHA" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "Could not resolve main HEAD." >&2
-            exit 1
-          }
-
-          # A PAT is required here: pushes made with the workflow GITHUB_TOKEN
-          # do not trigger the tag-push release workflow.
-          gh api --method POST "repos/${REPOSITORY}/git/refs" \
-            -f "ref=refs/tags/${TAG}" \
-            -f "sha=${MAIN_SHA}" >/dev/null
-
+          python scripts/resources/verify.py --catalog resources/catalog.json
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
-          {
-            echo '### EchoAI Resources release requested'
-            echo
-            echo "Created \`${TAG}\` at main HEAD \`${MAIN_SHA}\`."
-            echo "The tag push triggers the full [Release All workflow](https://github.com/${REPOSITORY}/actions/workflows/release.yml)."
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Validated resource release \`$TAG\` at \`$GITHUB_SHA\`." >> "$GITHUB_STEP_SUMMARY"
+      - id: matrix
+        run: echo "matrix=$(jq -c '[.resources[].id]' resources/catalog.json)" >> "$GITHUB_OUTPUT"
 
-      - name: Find downstream release run
-        env:
-          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          TAG: ${{ steps.tag.outputs.tag }}
-          SHA: ${{ steps.tag.outputs.sha }}
+  package-resources:
+    needs: validate-resource-release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        resource: ${{ fromJSON(needs.validate-resource-release.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package fixed resource source
+        run: python scripts/resources/package.py --catalog resources/catalog.json --resource-id '${{ matrix.resource }}' --output-dir dist
+      - name: Verify deterministic rebuild
+        run: |
+          python scripts/resources/package.py --catalog resources/catalog.json --resource-id '${{ matrix.resource }}' --output-dir rebuild
+          cmp dist/*.tar.bz2 rebuild/*.tar.bz2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resource-${{ strategy.job-index }}
+          path: |
+            dist/echoai-resource-*.tar.bz2
+            dist/metadata.json
+          if-no-files-found: error
+
+  assemble-resource-release:
+    needs: [validate-resource-release, package-resources]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: resource-*
+          path: packaged
+          merge-multiple: true
+      - name: Assemble manifest and checksums
+        run: |
+          mkdir release-files
+          find packaged -type f -name 'echoai-resource-*.tar.bz2' -exec cp {} release-files/ \;
+          python scripts/resources/verify.py --catalog resources/catalog.json --assets release-files --version '${{ needs.validate-resource-release.outputs.version }}' --assemble --output release-files/manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resources-release
+          path: |
+            release-files/echoai-resource-*.tar.bz2
+            release-files/manifest.json
+            release-files/SHA256SUMS
+          if-no-files-found: error
+
+  verify-resource-release:
+    needs: assemble-resource-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: EchoAIStore
+      - uses: actions/download-artifact@v4
+        with:
+          name: resources-release
+          path: release-files
+      - name: Verify assets, manifest and SHA256SUMS
         shell: bash
         run: |
           set -euo pipefail
-          RUN_URL=''
-          for _ in {1..10}; do
-            RUN_URL=$(gh run list --repo "$REPOSITORY" --workflow release.yml --event push \
-              --branch "$TAG" --limit 5 --json url,headSha \
-              --jq ".[] | select(.headSha == \"$SHA\") | .url" | head -n 1) || true
-            [[ -n "$RUN_URL" ]] && break
-            sleep 3
-          done
+          python EchoAIStore/scripts/resources/verify.py --catalog EchoAIStore/resources/catalog.json --manifest release-files/manifest.json --assets release-files
+          (cd release-files && sha256sum --check SHA256SUMS)
+      - name: Generate Rust candidate from release manifest
+        run: python EchoAIStore/scripts/resources/generate_rust.py --manifest release-files/manifest.json --output generated.rs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: echoai-resource-specs-candidate
+          path: generated.rs
+          if-no-files-found: error
 
-          if [[ -n "$RUN_URL" ]]; then
-            echo "Downstream run: ${RUN_URL}" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Downstream run is starting; follow it on the [Release All workflow page](https://github.com/${REPOSITORY}/actions/workflows/release.yml)." >> "$GITHUB_STEP_SUMMARY"
-          fi
+  publish-resource-release:
+    needs: [validate-resource-release, assemble-resource-release, verify-resource-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: resources-release
+          path: release-files
+      - name: Create immutable Resources release and tag
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate-resource-release.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: EchoAI Resources v${{ needs.validate-resource-release.outputs.version }}
+          prerelease: ${{ inputs.prerelease }}
+          fail_on_unmatched_files: true
+          files: |
+            release-files/echoai-resource-*.tar.bz2
+            release-files/manifest.json
+            release-files/SHA256SUMS
+      - name: Verify published release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate-resource-release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir downloaded
+          gh release download "$TAG" --pattern 'echoai-resource-*.tar.bz2' --pattern manifest.json --pattern SHA256SUMS --dir downloaded
+          python scripts/resources/verify.py --catalog resources/catalog.json --manifest downloaded/manifest.json --assets downloaded
+          (cd downloaded && sha256sum --check SHA256SUMS)
