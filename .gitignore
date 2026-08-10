@@ -1,3 +1,7 @@
 # Binary archives
 *.zip
 *.tar.gz
+
+# Python build artifacts
+__pycache__/
+*.py[cod]

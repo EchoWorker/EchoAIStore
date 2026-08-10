@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "resources": [
+    {
+      "id": "embed.bge-small-en",
+      "owner": "memory",
+      "label_key": "resource.embedding",
+      "required": true,
+      "version": "hf:ea104dacec62c0de699686887e3f920caeb4f3e3",
+      "destination": "bge-small-en-v1.5",
+      "asset": "echoai-resource-embed-bge-small-en-ea104dac.tar.bz2",
+      "source": {
+        "kind": "huggingface-revision",
+        "repository": "Xenova/bge-small-en-v1.5",
+        "revision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
+        "files": [
+          "onnx/model.onnx",
+          "config.json",
+          "tokenizer.json",
+          "tokenizer_config.json",
+          "special_tokens_map.json"
+        ]
+      },
+      "key_files": [
+        "onnx/model.onnx",
+        "config.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json"
+      ]
+    },
+    {
+      "id": "asr.x-asr-stream",
+      "owner": "audio",
+      "label_key": "resource.asr",
+      "required": true,
+      "version": "2026-06-05",
+      "destination": "sherpa-zipformer-zh-en",
+      "asset": "echoai-resource-asr-x-asr-stream-2026-06-05.tar.bz2",
+      "source": {
+        "kind": "tar-bz2-files",
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-x-asr-160ms-streaming-zipformer-transducer-zh-en-int8-2026-06-05.tar.bz2",
+        "sha256": "bdf2c0f2474d34bf479871b0f298c74a6f6bf15f24a492dc5401aa3041811915",
+        "files": {
+          "encoder.int8.onnx": "encoder.int8.onnx",
+          "decoder.onnx": "decoder.onnx",
+          "joiner.int8.onnx": "joiner.int8.onnx",
+          "tokens.txt": "tokens.txt"
+        }
+      },
+      "key_files": [
+        "encoder.int8.onnx",
+        "decoder.onnx",
+        "joiner.int8.onnx",
+        "tokens.txt"
+      ]
+    }
+  ]
+}

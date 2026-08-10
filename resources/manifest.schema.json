@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EchoWorker/EchoAIStore/resources/manifest.schema.json",
+  "title": "EchoAI managed resources manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "release", "resources"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "tag", "base_url"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$" },
+        "tag": { "type": "string", "pattern": "^echoai-resources-v" },
+        "base_url": { "type": "string", "pattern": "^https://github\\.com/EchoWorker/EchoAIStore/releases/download/echoai-resources-v" }
+      }
+    },
+    "resources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "owner", "label_key", "required", "version", "destination", "key_files", "archive"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$" },
+          "owner": { "type": "string", "minLength": 1 },
+          "label_key": { "type": "string", "minLength": 1 },
+          "required": { "type": "boolean" },
+          "version": { "type": "string", "minLength": 1 },
+          "destination": { "$ref": "#/$defs/path" },
+          "key_files": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/path" } },
+          "archive": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["asset", "url", "format", "size_bytes", "sha256"],
+            "properties": {
+              "asset": { "type": "string", "pattern": "^echoai-resource-[a-z0-9.-]+\\.tar\\.bz2$" },
+              "url": { "type": "string", "pattern": "^https://github\\.com/EchoWorker/EchoAIStore/releases/download/echoai-resources-v" },
+              "format": { "const": "tar.bz2" },
+              "size_bytes": { "type": "integer", "minimum": 1 },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$" }
+  }
+}

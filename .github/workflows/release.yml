@@ -19,11 +19,139 @@ on:
         description: 'OfficeCli version (e.g. 0.1.0, leave empty to skip)'
         required: false
         type: string
+      echoai_resources_version:
+        description: 'Immutable Resources release version (e.g. 1.0.0, leave empty to skip)'
+        required: false
+        type: string
+      echoai_resources_publish:
+        description: 'Publish the Resources release after verification'
+        required: false
+        default: false
+        type: boolean
+      echoai_resources_prerelease:
+        description: 'Mark the Resources release as a prerelease'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
 jobs:
+  # ─────────────────────────────────────────────
+  # Unified managed Resources Release
+  # ─────────────────────────────────────────────
+  validate-resource-release:
+    if: inputs.echoai_resources_version != ''
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate version, immutable tag and catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION='${{ inputs.echoai_resources_version }}'
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]
+          TAG="echoai-resources-v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Resource tag already exists: $TAG" >&2; exit 1
+          fi
+          python scripts/resources/verify.py --catalog resources/catalog.json
+      - id: matrix
+        run: echo "matrix=$(jq -c '[.resources[].id]' resources/catalog.json)" >> "$GITHUB_OUTPUT"
+
+  package-resources:
+    if: inputs.echoai_resources_version != ''
+    needs: validate-resource-release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        resource: ${{ fromJSON(needs.validate-resource-release.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package fixed resource source
+        run: python scripts/resources/package.py --catalog resources/catalog.json --resource-id '${{ matrix.resource }}' --output-dir dist
+      - name: Verify deterministic rebuild
+        run: |
+          python scripts/resources/package.py --catalog resources/catalog.json --resource-id '${{ matrix.resource }}' --output-dir rebuild
+          cmp dist/*.tar.bz2 rebuild/*.tar.bz2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resource-${{ strategy.job-index }}
+          path: |
+            dist/echoai-resource-*.tar.bz2
+            dist/metadata.json
+          if-no-files-found: error
+
+  assemble-resource-release:
+    if: inputs.echoai_resources_version != ''
+    needs: package-resources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: resource-*
+          path: packaged
+          merge-multiple: true
+      - name: Assemble manifest and checksums
+        run: |
+          mkdir release-files
+          find packaged -type f -name 'echoai-resource-*.tar.bz2' -exec cp {} release-files/ \;
+          python scripts/resources/verify.py --catalog resources/catalog.json --assets release-files --version '${{ inputs.echoai_resources_version }}' --assemble --output release-files/manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resources-release
+          path: |
+            release-files/echoai-resource-*.tar.bz2
+            release-files/manifest.json
+            release-files/SHA256SUMS
+          if-no-files-found: error
+
+  verify-resource-release:
+    if: inputs.echoai_resources_version != ''
+    needs: assemble-resource-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: resources-release
+          path: release-files
+      - run: python scripts/resources/verify.py --catalog resources/catalog.json --manifest release-files/manifest.json --assets release-files
+      - name: Generate Rust candidate
+        run: python scripts/resources/generate_rust.py --manifest release-files/manifest.json --output generated.rs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: echoai-resource-specs-candidate
+          path: generated.rs
+
+  publish-resource-release:
+    if: inputs.echoai_resources_version != '' && inputs.echoai_resources_publish
+    needs: verify-resource-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: resources-release
+          path: release-files
+      - name: Create immutable Resources release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG='echoai-resources-v${{ inputs.echoai_resources_version }}'
+          gh release create "$TAG" --title "EchoAI Resources v${{ inputs.echoai_resources_version }}" ${{ inputs.echoai_resources_prerelease && '--prerelease' || '' }} \
+            release-files/echoai-resource-*.tar.bz2 release-files/manifest.json release-files/SHA256SUMS
+          mkdir downloaded
+          gh release download "$TAG" --pattern 'echoai-resource-*.tar.bz2' --pattern manifest.json --pattern SHA256SUMS --dir downloaded
+          python scripts/resources/verify.py --catalog resources/catalog.json --manifest downloaded/manifest.json --assets downloaded
+
   # ─────────────────────────────────────────────
   # EchoAI Build (3 platforms)
   # ─────────────────────────────────────────────
@@ -97,36 +225,12 @@ jobs:
         working-directory: EchoAI
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Download fastembed model
-        working-directory: EchoAI
-        shell: bash
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          set -eo pipefail
-          MODEL_DIR="models/models--Xenova--bge-small-en-v1.5"
-          SNAP_DIR="$MODEL_DIR/snapshots/ea104dacec62c0de699686887e3f920caeb4f3e3"
-          mkdir -p "$SNAP_DIR/onnx" "$MODEL_DIR/refs" "$MODEL_DIR/blobs"
-          BASE_URL="https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main"
-          CURL_ARGS=(-fsSL --retry 20 --retry-delay 30 --retry-max-time 600 --retry-all-errors)
-          if [ -n "$HF_TOKEN" ]; then
-            CURL_ARGS+=(-H "Authorization: Bearer $HF_TOKEN")
-          fi
-          curl "${CURL_ARGS[@]}" "$BASE_URL/onnx/model.onnx"          -o "$SNAP_DIR/onnx/model.onnx"
-          curl "${CURL_ARGS[@]}" "$BASE_URL/config.json"               -o "$SNAP_DIR/config.json"
-          curl "${CURL_ARGS[@]}" "$BASE_URL/tokenizer.json"            -o "$SNAP_DIR/tokenizer.json"
-          curl "${CURL_ARGS[@]}" "$BASE_URL/tokenizer_config.json"     -o "$SNAP_DIR/tokenizer_config.json"
-          curl "${CURL_ARGS[@]}" "$BASE_URL/special_tokens_map.json"   -o "$SNAP_DIR/special_tokens_map.json"
-          echo -n "ea104dacec62c0de699686887e3f920caeb4f3e3" > "$MODEL_DIR/refs/main"
-          echo "Model files downloaded:"
-          find models -type f | head -20
-
       - name: Package (Unix)
         if: runner.os != 'Windows'
         working-directory: EchoAI
         run: |
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} .
-          tar czf ${{ matrix.archive }} ${{ matrix.binary }} models/
+          tar czf ${{ matrix.archive }} ${{ matrix.binary }}
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -142,7 +246,18 @@ jobs:
           Copy-Item "$crtDir\msvcp140_1.dll" .
           Copy-Item "$crtDir\vcruntime140.dll" .
           Copy-Item "$crtDir\vcruntime140_1.dll" .
-          Compress-Archive -Path ${{ matrix.binary }},msvcp140.dll,msvcp140_1.dll,vcruntime140.dll,vcruntime140_1.dll,models -DestinationPath ${{ matrix.archive }}
+          Compress-Archive -Path ${{ matrix.binary }},msvcp140.dll,msvcp140_1.dll,vcruntime140.dll,vcruntime140_1.dll -DestinationPath ${{ matrix.archive }}
+
+      - name: Scan EchoAI archive for bundled models
+        working-directory: EchoAI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir scan
+          case '${{ matrix.archive }}' in *.zip) unzip -q '${{ matrix.archive }}' -d scan;; *) tar xzf '${{ matrix.archive }}' -C scan;; esac
+          if find scan -type f \( -name '*.onnx' -o -name 'tokenizer.json' \) -print -quit | grep -q . || find scan -type d -name models -print -quit | grep -q .; then
+            echo 'Product archive contains forbidden model files' >&2; find scan -print; exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -483,6 +598,14 @@ jobs:
             ls -1 src-tauri/echoai/plugins/echowork/skills
           fi
 
+      - name: Scan bundled EchoAI tree for models
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find src-tauri/echoai -type f \( -name '*.onnx' -o -name 'tokenizer.json' \) -print -quit | grep -q . || find src-tauri/echoai -type d -name models -print -quit | grep -q .; then
+            echo 'EchoWork would bundle forbidden model files' >&2; find src-tauri/echoai -print; exit 1
+          fi
+
       - name: Sign bundled echoai binary (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -569,6 +692,22 @@ jobs:
           fi
           ls -la dist-artifacts/
 
+      - name: Scan EchoWork installers for bundled models
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf installer-scan && mkdir installer-scan
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            installer=$(find dist-artifacts -maxdepth 1 -name '*.exe' -print -quit)
+            7z x -y "$installer" -oinstaller-scan >/dev/null
+          else
+            bundle=$(find dist-artifacts -maxdepth 1 -name '*.app.tar.gz' -print -quit)
+            tar xzf "$bundle" -C installer-scan
+          fi
+          if find installer-scan -type f \( -name '*.onnx' -o -name 'tokenizer.json' \) -print -quit | grep -q . || find installer-scan -type d -name models -print -quit | grep -q .; then
+            echo 'EchoWork installer contains forbidden model files' >&2; find installer-scan -print; exit 1
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: echowork-${{ matrix.platform }}
@@ -588,6 +727,15 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
+          name: echoai-windows-x64.zip
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: echoai-linux-x64.tar.gz
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: echoai-darwin-arm64.tar.gz
           path: artifacts
 
       - name: Generate checksums
@@ -633,6 +781,15 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
+          name: echocode-windows-x64.zip
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: echocode-linux-x64.tar.gz
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: echocode-darwin-arm64.tar.gz
           path: artifacts
 
       - name: Generate checksums
@@ -674,6 +831,15 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
+          name: officecli-windows-x64.zip
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: officecli-linux-x64.tar.gz
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: officecli-darwin-arm64.tar.gz
           path: artifacts
 
       - name: Generate checksums
@@ -715,6 +881,11 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
+          name: echowork-windows-x64
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: echowork-macos-arm
           path: artifacts
 
       - name: Generate latest.json
