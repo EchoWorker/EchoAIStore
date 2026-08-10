@@ -1,6 +1,9 @@
 name: Release All
 
 on:
+  push:
+    tags:
+      - 'echoai-resources-v*'
   workflow_dispatch:
     inputs:
       echoai_version:
@@ -42,29 +45,49 @@ jobs:
   # Unified managed Resources Release
   # ─────────────────────────────────────────────
   validate-resource-release:
-    if: inputs.echoai_resources_version != ''
+    if: github.event_name == 'push' || inputs.echoai_resources_version != ''
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate version, immutable tag and catalog
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
+          DISPATCH_VERSION: ${{ inputs.echoai_resources_version }}
         run: |
           set -euo pipefail
-          VERSION='${{ inputs.echoai_resources_version }}'
-          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]
-          TAG="echoai-resources-v${VERSION}"
-          if gh release view "$TAG" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Resource tag already exists: $TAG" >&2; exit 1
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            TAG="$GITHUB_REF_NAME"
+            [[ "$TAG" =~ ^echoai-resources-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] || {
+              echo "Invalid Resources release tag: $TAG" >&2; exit 1;
+            }
+            VERSION="${TAG#echoai-resources-v}"
+            [[ "$(git rev-parse "$TAG^{commit}")" == "$GITHUB_SHA" ]] || {
+              echo "Trigger tag does not resolve to GITHUB_SHA" >&2; exit 1;
+            }
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "Immutable Resources release already exists: $TAG" >&2; exit 1
+            fi
+          else
+            VERSION="$DISPATCH_VERSION"
+            [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] || {
+              echo "Invalid Resources release version: $VERSION" >&2; exit 1;
+            }
+            TAG="echoai-resources-v${VERSION}"
+            if gh release view "$TAG" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+              echo "Resource tag already exists: $TAG" >&2; exit 1
+            fi
           fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           python scripts/resources/verify.py --catalog resources/catalog.json
       - id: matrix
         run: echo "matrix=$(jq -c '[.resources[].id]' resources/catalog.json)" >> "$GITHUB_OUTPUT"
 
   package-resources:
-    if: inputs.echoai_resources_version != ''
+    if: github.event_name == 'push' || inputs.echoai_resources_version != ''
     needs: validate-resource-release
     runs-on: ubuntu-latest
     strategy:
@@ -88,8 +111,8 @@ jobs:
           if-no-files-found: error
 
   assemble-resource-release:
-    if: inputs.echoai_resources_version != ''
-    needs: package-resources
+    if: github.event_name == 'push' || inputs.echoai_resources_version != ''
+    needs: [validate-resource-release, package-resources]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,7 +125,7 @@ jobs:
         run: |
           mkdir release-files
           find packaged -type f -name 'echoai-resource-*.tar.bz2' -exec cp {} release-files/ \;
-          python scripts/resources/verify.py --catalog resources/catalog.json --assets release-files --version '${{ inputs.echoai_resources_version }}' --assemble --output release-files/manifest.json
+          python scripts/resources/verify.py --catalog resources/catalog.json --assets release-files --version '${{ needs.validate-resource-release.outputs.version }}' --assemble --output release-files/manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: resources-release
@@ -113,7 +136,7 @@ jobs:
           if-no-files-found: error
 
   verify-resource-release:
-    if: inputs.echoai_resources_version != ''
+    if: github.event_name == 'push' || inputs.echoai_resources_version != ''
     needs: assemble-resource-release
     runs-on: ubuntu-latest
     steps:
@@ -131,8 +154,8 @@ jobs:
           path: generated.rs
 
   publish-resource-release:
-    if: inputs.echoai_resources_version != '' && inputs.echoai_resources_publish
-    needs: verify-resource-release
+    if: github.event_name == 'push' || (inputs.echoai_resources_version != '' && inputs.echoai_resources_publish)
+    needs: [validate-resource-release, verify-resource-release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -145,8 +168,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG='echoai-resources-v${{ inputs.echoai_resources_version }}'
-          gh release create "$TAG" --title "EchoAI Resources v${{ inputs.echoai_resources_version }}" ${{ inputs.echoai_resources_prerelease && '--prerelease' || '' }} \
+          TAG='echoai-resources-v${{ needs.validate-resource-release.outputs.version }}'
+          gh release create "$TAG" --title "EchoAI Resources v${{ needs.validate-resource-release.outputs.version }}" ${{ inputs.echoai_resources_prerelease && '--prerelease' || '' }} \
             release-files/echoai-resource-*.tar.bz2 release-files/manifest.json release-files/SHA256SUMS
           mkdir downloaded
           gh release download "$TAG" --pattern 'echoai-resource-*.tar.bz2' --pattern manifest.json --pattern SHA256SUMS --dir downloaded
@@ -156,7 +179,7 @@ jobs:
   # EchoAI Build (3 platforms)
   # ─────────────────────────────────────────────
   build-echoai:
-    if: inputs.echoai_version != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.echoai_version != ''
     name: EchoAI (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -268,7 +291,7 @@ jobs:
   # EchoCode Build (3 platforms)
   # ─────────────────────────────────────────────
   build-echocode:
-    if: inputs.echocode_version != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.echocode_version != ''
     name: EchoCode (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -369,7 +392,7 @@ jobs:
   # OfficeCli Build (3 platforms)
   # ─────────────────────────────────────────────
   build-officecli:
-    if: inputs.officecli_version != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.officecli_version != ''
     name: OfficeCli (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -458,7 +481,7 @@ jobs:
   # EchoWork Build (2 platforms)
   # ─────────────────────────────────────────────
   build-echowork:
-    if: ${{ !failure() && !cancelled() && inputs.echowork_version != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !failure() && !cancelled() && inputs.echowork_version != '' }}
     name: EchoWork (${{ matrix.platform }})
     needs: [build-echoai]
     runs-on: ${{ matrix.os }}
@@ -519,7 +542,7 @@ jobs:
       - run: npm ci
 
       - name: Download EchoAI artifact (from this workflow)
-        if: inputs.echoai_version != ''
+        if: github.event_name == 'workflow_dispatch' && inputs.echoai_version != ''
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.echoai_archive }}
@@ -718,7 +741,7 @@ jobs:
   # Publish EchoAI
   # ─────────────────────────────────────────────
   publish-echoai:
-    if: inputs.echoai_version != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.echoai_version != ''
     name: Publish EchoAI
     needs: build-echoai
     runs-on: ubuntu-latest
@@ -772,7 +795,7 @@ jobs:
   # Publish EchoCode
   # ─────────────────────────────────────────────
   publish-echocode:
-    if: inputs.echocode_version != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.echocode_version != ''
     name: Publish EchoCode
     needs: build-echocode
     runs-on: ubuntu-latest
@@ -822,7 +845,7 @@ jobs:
   # Publish OfficeCli
   # ─────────────────────────────────────────────
   publish-officecli:
-    if: inputs.officecli_version != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.officecli_version != ''
     name: Publish OfficeCli
     needs: build-officecli
     runs-on: ubuntu-latest
@@ -872,7 +895,7 @@ jobs:
   # Publish EchoWork
   # ─────────────────────────────────────────────
   publish-echowork:
-    if: ${{ !failure() && !cancelled() && inputs.echowork_version != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !failure() && !cancelled() && inputs.echowork_version != '' }}
     name: Publish EchoWork
     needs: build-echowork
     runs-on: ubuntu-latest
