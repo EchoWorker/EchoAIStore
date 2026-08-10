@@ -1,0 +1,123 @@
+name: Release EchoAI Resources
+
+on:
+  workflow_dispatch:
+    inputs:
+      resource_version:
+        description: 'Resource version (SemVer, e.g. 1.0.1 or 1.0.1-rc.1)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Publish as a prerelease (version must contain a prerelease suffix)'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-echoai-resources-${{ inputs.resource_version }}
+  cancel-in-progress: false
+
+jobs:
+  create-release-tag:
+    name: Create resource release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate request and create tag at main HEAD
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ inputs.resource_version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # SemVer 2.0.0 without build metadata. The downstream release tag
+          # contract intentionally does not accept '+' build metadata either.
+          SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?$'
+          [[ "$VERSION" =~ $SEMVER_RE ]] || {
+            echo "Invalid resource version: $VERSION (expected strict SemVer without build metadata)" >&2
+            exit 1
+          }
+
+          if [[ "$VERSION" == *-* ]]; then
+            [[ "$PRERELEASE" == 'true' ]] || {
+              echo "Version $VERSION has a prerelease suffix, so prerelease must be enabled." >&2
+              exit 1
+            }
+          else
+            [[ "$PRERELEASE" == 'false' ]] || {
+              echo "Prerelease requires a SemVer prerelease suffix (for example: ${VERSION}-rc.1)." >&2
+              exit 1
+            }
+          fi
+
+          TAG="echoai-resources-v${VERSION}"
+
+          assert_absent() {
+            local kind="$1" endpoint="$2" response status
+            response=$(mktemp)
+            if gh api --include "$endpoint" >"$response" 2>/dev/null; then
+              status=$(awk '/^HTTP\// { code=$2 } END { print code }' "$response")
+            else
+              status=$(awk '/^HTTP\// { code=$2 } END { print code }' "$response")
+            fi
+            rm -f "$response"
+            case "$status" in
+              404) ;;
+              200) echo "$kind already exists: $TAG" >&2; exit 1 ;;
+              *) echo "Could not safely verify that $kind is absent (HTTP ${status:-unknown})." >&2; exit 1 ;;
+            esac
+          }
+
+          assert_absent 'Tag' "repos/${REPOSITORY}/git/ref/tags/${TAG}"
+          assert_absent 'Release' "repos/${REPOSITORY}/releases/tags/${TAG}"
+
+          MAIN_SHA=$(gh api "repos/${REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          [[ "$MAIN_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Could not resolve main HEAD." >&2
+            exit 1
+          }
+
+          # A PAT is required here: pushes made with the workflow GITHUB_TOKEN
+          # do not trigger the tag-push release workflow.
+          gh api --method POST "repos/${REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/${TAG}" \
+            -f "sha=${MAIN_SHA}" >/dev/null
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo '### EchoAI Resources release requested'
+            echo
+            echo "Created \`${TAG}\` at main HEAD \`${MAIN_SHA}\`."
+            echo "The tag push triggers the full [Release All workflow](https://github.com/${REPOSITORY}/actions/workflows/release.yml)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Find downstream release run
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          SHA: ${{ steps.tag.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_URL=''
+          for _ in {1..10}; do
+            RUN_URL=$(gh run list --repo "$REPOSITORY" --workflow release.yml --event push \
+              --branch "$TAG" --limit 5 --json url,headSha \
+              --jq ".[] | select(.headSha == \"$SHA\") | .url" | head -n 1) || true
+            [[ -n "$RUN_URL" ]] && break
+            sleep 3
+          done
+
+          if [[ -n "$RUN_URL" ]]; then
+            echo "Downstream run: ${RUN_URL}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Downstream run is starting; follow it on the [Release All workflow page](https://github.com/${REPOSITORY}/actions/workflows/release.yml)." >> "$GITHUB_STEP_SUMMARY"
+          fi
