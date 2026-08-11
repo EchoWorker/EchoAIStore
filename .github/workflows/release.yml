@@ -207,7 +207,11 @@ jobs:
           esac
           URL="https://github.com/microsoft/onnxruntime/releases/download/v$VERSION/$ASSET"
           curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ASSET" "$URL"
-          echo "$EXPECTED  $RUNNER_TEMP/$ASSET" | sha256sum --check --strict
+          ACTUAL="$(shasum -a 256 "$RUNNER_TEMP/$ASSET" | awk '{print toupper($1)}')"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "ONNX Runtime archive SHA256 mismatch: expected $EXPECTED, got $ACTUAL" >&2
+            exit 1
+          fi
           rm -rf "$RUNNER_TEMP/onnxruntime-unix"
           mkdir -p "$RUNNER_TEMP/onnxruntime-unix"
           tar xzf "$RUNNER_TEMP/$ASSET" -C "$RUNNER_TEMP/onnxruntime-unix"
