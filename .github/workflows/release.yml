@@ -185,12 +185,64 @@ jobs:
         working-directory: EchoAI
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Download pinned ONNX Runtime (Unix)
+        if: runner.os != 'Windows'
+        working-directory: EchoAI
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='1.24.2'
+          case '${{ matrix.target }}' in
+            x86_64-unknown-linux-gnu)
+              ASSET="onnxruntime-linux-x64-$VERSION.tgz"
+              EXPECTED='43725474BA5663642E17684717946693850E2005EFBD724AC72DA278FEAD25E6'
+              LIB_NAME='libonnxruntime.so.1.24.2'
+              ;;
+            aarch64-apple-darwin)
+              ASSET="onnxruntime-osx-arm64-$VERSION.tgz"
+              EXPECTED='0AF4FA503E8EA285245B47EE42D0A7461B8156A81270857DA0C1D4ECF858ABDE'
+              LIB_NAME='libonnxruntime.1.24.2.dylib'
+              ;;
+            *) echo "Unsupported ONNX Runtime target: ${{ matrix.target }}" >&2; exit 1;;
+          esac
+          URL="https://github.com/microsoft/onnxruntime/releases/download/v$VERSION/$ASSET"
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ASSET" "$URL"
+          echo "$EXPECTED  $RUNNER_TEMP/$ASSET" | sha256sum --check --strict
+          rm -rf "$RUNNER_TEMP/onnxruntime-unix"
+          mkdir -p "$RUNNER_TEMP/onnxruntime-unix"
+          tar xzf "$RUNNER_TEMP/$ASSET" -C "$RUNNER_TEMP/onnxruntime-unix"
+          LIB_PATH="$(find "$RUNNER_TEMP/onnxruntime-unix" -type f -name "$LIB_NAME" -print -quit)"
+          test -n "$LIB_PATH"
+          cp "$LIB_PATH" "$LIB_NAME"
+
       - name: Package (Unix)
         if: runner.os != 'Windows'
         working-directory: EchoAI
         run: |
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} .
-          tar czf ${{ matrix.archive }} ${{ matrix.binary }}
+          case '${{ matrix.target }}' in
+            x86_64-unknown-linux-gnu) tar czf ${{ matrix.archive }} ${{ matrix.binary }} libonnxruntime.so.1.24.2;;
+            aarch64-apple-darwin) tar czf ${{ matrix.archive }} ${{ matrix.binary }} libonnxruntime.1.24.2.dylib;;
+          esac
+
+      - name: Download pinned ONNX Runtime (Windows)
+        if: runner.os == 'Windows'
+        working-directory: EchoAI
+        shell: pwsh
+        run: |
+          $version = "1.24.2"
+          $expected = "8E3E9C826375352E29CB2614FE44F3D7A4B0FF7B8028AD7A456AF9D949A7E8B0"
+          $archive = Join-Path $env:RUNNER_TEMP "onnxruntime-win-x64-$version.zip"
+          $extract = Join-Path $env:RUNNER_TEMP "onnxruntime-win-x64-$version"
+          $url = "https://github.com/microsoft/onnxruntime/releases/download/v$version/onnxruntime-win-x64-$version.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+          if ($actual -ne $expected) { throw "ONNX Runtime archive SHA256 mismatch: expected $expected, got $actual" }
+          Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $archive -DestinationPath $extract
+          $dlls = @(Get-ChildItem -LiteralPath $extract -Filter onnxruntime.dll -File -Recurse)
+          if ($dlls.Count -ne 1) { throw "Expected exactly one onnxruntime.dll, found $($dlls.Count)" }
+          Copy-Item -LiteralPath $dlls[0].FullName -Destination .\onnxruntime-1.24.2.dll
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -206,7 +258,27 @@ jobs:
           Copy-Item "$crtDir\msvcp140_1.dll" .
           Copy-Item "$crtDir\vcruntime140.dll" .
           Copy-Item "$crtDir\vcruntime140_1.dll" .
-          Compress-Archive -Path ${{ matrix.binary }},msvcp140.dll,msvcp140_1.dll,vcruntime140.dll,vcruntime140_1.dll -DestinationPath ${{ matrix.archive }}
+          Compress-Archive -Path ${{ matrix.binary }},onnxruntime-1.24.2.dll,msvcp140.dll,msvcp140_1.dll,vcruntime140.dll,vcruntime140_1.dll -DestinationPath ${{ matrix.archive }}
+
+      - name: Smoke-test packaged EchoAI (Windows)
+        if: runner.os == 'Windows'
+        working-directory: EchoAI
+        shell: pwsh
+        run: |
+          $smoke = Join-Path $env:RUNNER_TEMP "echoai-empty-smoke"
+          Remove-Item $smoke -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath "${{ matrix.archive }}" -DestinationPath $smoke
+          $ortDlls = @(Get-ChildItem -LiteralPath $smoke -Filter "onnxruntime*.dll" -File)
+          if ($ortDlls.Count -ne 1 -or $ortDlls[0].Name -ne "onnxruntime-1.24.2.dll") {
+            throw "Expected exactly onnxruntime-1.24.2.dll in packaged archive"
+          }
+          Push-Location $smoke
+          try {
+            & .\echoai.exe --version
+            if ($LASTEXITCODE -ne 0) { throw "Packaged EchoAI loader smoke failed: $LASTEXITCODE" }
+          } finally {
+            Pop-Location
+          }
 
       - name: Scan EchoAI archive for bundled models
         working-directory: EchoAI
