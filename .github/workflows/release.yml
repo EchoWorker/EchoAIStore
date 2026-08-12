@@ -656,6 +656,18 @@ jobs:
             rm -rf src-tauri/echoai/plugins/echowork
             mkdir -p src-tauri/echoai/plugins/echowork
             cp -r echowork-plugin/* src-tauri/echoai/plugins/echowork/
+            # Generate an authoritative sidecar from the current source tree.
+            # Runtime deployment copies only these files, so stale resources kept
+            # by an in-place Tauri upgrade can never reintroduce deleted skills.
+            node scripts/generate-echowork-plugin-manifest.mjs \
+              --source echowork-plugin \
+              --output src-tauri/echoai/plugins/echowork-files.json
+            node scripts/generate-echowork-plugin-manifest.mjs \
+              --source echowork-plugin \
+              --output src-tauri/echoai/plugins/echowork-files.json \
+              --check
+            echo "=== Bundled echowork plugin manifest ==="
+            cat src-tauri/echoai/plugins/echowork-files.json
             echo "=== Bundled echowork plugin ==="
             find src-tauri/echoai/plugins -type f
             echo "=== Bundled skills (must match echowork-plugin/skills/) ==="
