@@ -1,0 +1,186 @@
+name: Release OfficeCli
+
+on:
+  workflow_dispatch:
+    inputs:
+      officecli_version:
+        description: 'OfficeCli version (e.g. 0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-officecli-${{ inputs.officecli_version }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-source-ref:
+    runs-on: ubuntu-latest
+    outputs:
+      officecli_ref: ${{ steps.resolve.outputs.officecli_ref }}
+    steps:
+      - name: Resolve OfficeCli source ref
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(gh api 'repos/EchoWorker/OfficeCli/git/ref/heads/main' --jq '.object.sha')
+          echo "officecli_ref=${sha}" >> "$GITHUB_OUTPUT"
+          {
+            echo '### Resolved source ref'
+            echo "- OfficeCli: \`${sha}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-officecli:
+    name: OfficeCli (${{ matrix.target }})
+    needs: resolve-source-ref
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: officecli-windows-x64.zip
+            binary: officecli.exe
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            archive: officecli-linux-x64.tar.gz
+            binary: officecli
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive: officecli-darwin-arm64.tar.gz
+            binary: officecli
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: EchoWorker/OfficeCli
+          ref: ${{ needs.resolve-source-ref.outputs.officecli_ref }}
+          path: OfficeCli
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Record source provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual=$(git -C OfficeCli rev-parse HEAD)
+          expected='${{ needs.resolve-source-ref.outputs.officecli_ref }}'
+          test "$actual" = "$expected"
+          echo "- OfficeCli: \`${actual}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            OfficeCli/ooxml-rs/target
+          key: officecli-${{ matrix.target }}-${{ hashFiles('OfficeCli/ooxml-rs/Cargo.lock') }}
+          restore-keys: officecli-${{ matrix.target }}-
+
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Override OfficeCli version
+        working-directory: OfficeCli/ooxml-rs/apps/officecli
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='${{ inputs.officecli_version }}'
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          echo "Set OfficeCli version to $VERSION"
+          head -5 Cargo.toml
+
+      - name: Build release
+        working-directory: OfficeCli/ooxml-rs
+        run: cargo build --release --target ${{ matrix.target }} -p officecli
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        working-directory: OfficeCli/ooxml-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} .
+          tar czf ${{ matrix.archive }} ${{ matrix.binary }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        working-directory: OfficeCli/ooxml-rs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" .
+          $vcToolsDir = & vswhere -latest -property installationPath
+          $vcRedistDir = Join-Path $vcToolsDir "VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT"
+          $crtDir = (Resolve-Path $vcRedistDir | Select-Object -First 1).Path
+          Copy-Item "$crtDir\msvcp140.dll" .
+          Copy-Item "$crtDir\msvcp140_1.dll" .
+          Copy-Item "$crtDir\vcruntime140.dll" .
+          Copy-Item "$crtDir\vcruntime140_1.dll" .
+          Compress-Archive -Path ${{ matrix.binary }},msvcp140.dll,msvcp140_1.dll,vcruntime140.dll,vcruntime140_1.dll -DestinationPath ${{ matrix.archive }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: OfficeCli/ooxml-rs/${{ matrix.archive }}
+          if-no-files-found: error
+
+  publish-officecli:
+    name: Publish OfficeCli
+    needs: build-officecli
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: officecli-windows-x64.zip
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: officecli-linux-x64.tar.gz
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: officecli-darwin-arm64.tar.gz
+          path: artifacts
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd artifacts
+          find . -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec sh -c '
+            for f; do sha256sum "$f" | sed "s|  .*/|  |" >> checksums.sha256; done
+          ' _ {} +
+          test "$(wc -l < checksums.sha256)" -eq 3
+          cat checksums.sha256
+
+      - name: Create OfficeCli release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: officecli-v${{ inputs.officecli_version }}
+          name: OfficeCli v${{ inputs.officecli_version }}
+          body: |
+            ## OfficeCli v${{ inputs.officecli_version }}
+
+            ### Download
+
+            | Platform | Archive |
+            |----------|---------|
+            | Windows x64 | `officecli-windows-x64.zip` |
+            | Linux x64 | `officecli-linux-x64.tar.gz` |
+            | macOS ARM64 | `officecli-darwin-arm64.tar.gz` |
+          files: |
+            artifacts/**/*
