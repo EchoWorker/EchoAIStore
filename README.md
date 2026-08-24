@@ -1,155 +1,148 @@
-# EchoAI System
+<h1 align="center">EchoWork</h1>
 
-**A full-stack AI coding agent system** — from LLM engine to desktop IDE, built entirely in Rust and TypeScript.
+<p align="center">An open-source AI workspace for real work</p>
 
-EchoAI System is a three-layer architecture that turns any LLM into an autonomous coding agent with persistent memory, background task management, and a native desktop interface.
-
-<p align="center">
-  <img src="images/echowork-main-workspace.png" alt="EchoWork Desktop IDE" width="900" />
-</p>
-
----
-
-## 🏗️ Architecture
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                                                              │
-│   EchoWork — Desktop AI IDE (Tauri + React)                  │
-│   File explorer · Git · Chat · Code preview · Skills         │
-│                                                              │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│   EchoAI — Agent Gateway & Runtime (Rust)                    │
-│   WebSocket JSON-RPC · Sessions · Plugins · Memory · Cron    │
-│                                                              │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│   EchoCode — AI Coding Agent Engine (Rust)                   │
-│   LLM protocols · 17 tools · Sub-agents · Compaction · Hooks │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-Each layer is independently usable, but they're designed to work together.
-
----
-
-## 📦 Projects
-
-### [EchoCode](EchoCode/) — AI Coding Agent Engine
+<p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
 
 <p align="center">
-  <img src="images/echocode-tui-welcome.png" alt="EchoCode TUI" width="700" />
+  <img src="images/echowork-capability-matrix.png" alt="EchoWork capability matrix: multiple workspaces, parallel workflows, controllable execution, continuous work, and HTML Apps" width="1200" />
 </p>
 
-A high-performance autonomous coding agent written in Rust. EchoCode is the brain of the system — it connects to any LLM, runs an agentic tool-use loop, and executes multi-step coding tasks.
+## What makes EchoWork different?
 
-**Key capabilities:**
-- **16+ LLM providers** — OpenAI, Anthropic, Google, Azure, DeepSeek, Mistral, Groq, Ollama, and more
-- **3 API protocols** — Chat Completions, OpenAI Responses API, Anthropic Messages — auto-selected per model
-- **17 built-in tools** — file I/O, search, bash execution, web access, sub-agents, background tasks
-- **5 specialised sub-agents** — GeneralPurpose, Explore, Plan, Verification, DeepResearch
-- **Multi-tier context compaction** — micro-compact, LLM summarization, image eviction, hard truncate
-- **Hooks v2** — 12-event lifecycle hooks for plugins to observe or modify agent behaviour
-- **SWE-bench Verified: 89.8% Pass@1** — industry-leading autonomous coding performance
+**EchoWork is not another AI chat window. It is an AI workspace built for real work.** It uses AI to reshape your working bandwidth, so multiple tasks can move forward in parallel, keep running, and remain under your control—turning personal productivity from a single-threaded process into a parallel one.
 
-📖 [Full documentation](EchoCode/README.md) · 💻 [Source code](https://github.com/EchoWorker/EchoCodeRust)
+| Core value | What it means |
+| --- | --- |
+| **Multiple workspaces** | Coordinate multiple workspaces from one desktop. Files, sessions, Git repositories, and project skills stay organized by project, with clean context boundaries and instant switching. |
+| **Parallel workflows** | Run multiple workspaces, sessions, subagents, and background tasks at once. Each workflow stays independent, visible, and unblocked. |
+| **Controllable and verifiable** | Plans, todos, tool calls, context usage, cost, and task status remain visible throughout execution. Intervene or stop at any time, then verify outcomes through real files and diffs. |
+| **From conversation to continuous work** | Memory preserves project knowledge, Skills package repeatable expertise, Cron drives automation, Channels connect external entry points, and Apps provide complete experiences. |
+| **Workspace as an app** | Bring UI, data, AI, and automation together in one workspace, turning personal workflows into reusable AI applications that can keep evolving and be shared as templates. |
 
----
+## Capability overview
 
-### [EchoAI](EchoAI/) — Agent Gateway & Runtime
+### Core capabilities
 
-A multi-session, multi-client service layer that bridges any frontend to any LLM agent backend over WebSocket JSON-RPC.
+| Capability | Description |
+| --- | --- |
+| **AI workflows** | Run multiple sessions, subagents, and background tasks in parallel. Use Plan, Goal, and Workflow for tasks of different complexity. |
+| **Execution visibility** | Track plans, todos, tool calls, context usage, token consumption, cost, and task status for every session; redirect or stop execution at any time. |
+| **Token cost optimization** | Reuse stable context with Prompt Cache on supported models. Measured cache hit rates remain above **96%**, reducing repeated token consumption and long-session cost. |
+| **Artifact preview** | Inspect code, Markdown, PDFs, images, audio, video, Word, Excel, PowerPoint, HTML, plans, and diffs directly in the workspace. |
+| **Git workspace** | Review changes and historical diffs, manage staging, branches, and commits, and generate Conventional Commit messages. |
+| **Memory** | Carry important project knowledge across sessions and retrieve past outcomes, decisions, and related files when needed. |
+| **Skills** | Package expert workflows as reusable capabilities, then install, manage, and invoke them globally or per workspace. |
+| **Cron jobs** | Run reports, inspections, and information gathering on a schedule while preserving the complete execution history in the bound session. |
+| **Channel entry points** | Connect WeChat, Slack, webhooks, and other external requests through connectors, then manage their sessions in EchoWork. |
+| **Model configuration** | Built-in support for Anthropic, OpenAI, Google Gemini, DeepSeek, Zhipu GLM, Qwen, Kimi, OpenRouter, GitHub Copilot, and local Ollama models, plus custom compatible services. Each session can choose its own model and reasoning effort. |
+| **Web Search** | Give agents live web access through DuckDuckGo, Brave, Tavily, Exa, Web IQ, or self-hosted SearXNG. |
 
-EchoAI sits between client applications and agent engines. It owns session lifecycle, persistent storage, plugin hosting, memory, scheduled tasks, and a rich streaming event protocol.
+### Distinctive capabilities
 
-**Key capabilities:**
-- **WebSocket JSON-RPC gateway** — VS Code, desktop apps, CLI tools, chat bots — any client that speaks WebSocket
-- **Pluggable agent backends** — EchoAgent (wrapping EchoCode) or ClaudeAgent (wrapping Claude Code)
-- **Persistent memory** — Local vector search via fastembed (ONNX), 3-stage "Dreaming" consolidation
-- **Plugin & tool system** — Built-in tools (messaging, email, cron, memory) plus runtime plugin injection
-- **Skills management** — Install, trust-gate, and serve Markdown-defined skill packs
-- **SQLite persistence** — Sessions, turns, cron jobs in WAL-mode SQLite — resume any conversation after restart
-- **Cost tracking** — Per-turn token usage accumulated at session level
+| Capability | Description |
+| --- | --- |
+| **Screenshot annotation for AI** | Select and annotate any preview region, then send the marked screenshot and instruction directly to a vision-capable model. |
+| **Background tasks within a session** | Move long-running commands and subagent work to the background so the current session remains interactive. Continue other work, monitor progress, or cancel each task independently. |
+| **HTML Apps** | Let agents quickly create interactive applications connected to AI, workspace files, and persistent data for displaying, analyzing, and processing information. |
+| **Safe and full webpage modes** | Unknown HTML opens safely by default. Trusted pages can opt into full webpage capabilities, retain version-specific authorization, and use developer tools. |
+| **Audio transcription** | Play and visualize audio, transcribe it as a live stream, and let AI turn the result into meeting notes, interview summaries, or action items. |
+| **SkillHub** | Search, filter, and inspect skill packages, install them globally or into a workspace, then invoke them explicitly with `@skill-name`. |
+| **Built-in AI Apps** | Gomoku provides an AI opponent and restorable games. English Learning includes graded reading, vocabulary review, an AI teacher, conversation, and writing practice. |
 
-📖 [Full documentation](EchoAI/README.md) · 💻 [Source code](https://github.com/EchoWorker/EchoAI)
+## Quick command set
 
----
+Type `/` in the input box to switch how the agent works. Regular chat is ideal for direct requests; use these commands when a task needs autonomous execution, coordinated delegation, continuous operation, or focused review.
 
-### [EchoWork](EchoWork/) — Desktop AI IDE
+### Execution commands
 
-An AI-native desktop IDE built with Tauri + React. EchoWork is the visual interface for the entire ecosystem — it bundles EchoAI internally, so you just download the installer and go.
+**`/goal <objective>` — Drive autonomously toward an outcome**
 
-**Key capabilities:**
-- **AI chat panel** — Multi-model streaming (Claude, GPT, Gemini, DeepSeek, 30+ models), markdown, code blocks, image attachments
-- **File explorer** — Browse, create, rename, copy/paste, drag-and-drop with live filesystem watching
-- **Code preview** — CodeMirror 6 with syntax highlighting, Ctrl+F search, themes
-- **Git integration** — Stage, commit, diff, discard, commit graph — all from the sidebar
-- **Spreadsheet viewer** — Open `.xlsx`/`.xls` with full Univer rendering
-- **Background tasks** — Live task bar with cancel/status tracking
-- **Auto-update** — Built-in updater with SHA256 checksum verification
-- **Cross-platform** — Windows and macOS
+Best for tasks with a clear result but many implementation steps. The agent follows a **Plan → Work → Verify** loop instead of stopping after one response, continuing until the objective passes verification or you stop it.
 
-📖 [Full documentation](EchoWork/README.md) · 💻 [Source code](https://github.com/EchoWorker/EchoWork)
+**`/workflow <task>` — Coordinate multiple subagents**
 
----
+Best for work that can be divided into research, implementation, testing, review, and other independent packages. The main agent manages dependencies, todos, and progress, delegates parallel work to subagents, and integrates the results.
 
-## 📥 Download
+**`/review [focus]` — Review the current changes**
 
-### EchoWork (Desktop IDE — recommended)
+Best before committing or pushing. It covers uncommitted changes and committed-but-unpushed work, then launches an isolated CodeReviewer to report findings by severity with file locations and recommended fixes.
 
-The easiest way to get started. EchoAI is bundled inside — no separate install needed.
+**`/loop <recurring objective>` — Turn an objective into a continuous loop**
 
-| Platform | Download |
-|---|---|
-| Windows x64 | [`EchoWork_*_x64-setup.exe`](https://github.com/EchoWorker/EchoAIStore/releases?q=echowork) |
-| macOS Apple Silicon | [`EchoWork_*_aarch64.dmg`](https://github.com/EchoWorker/EchoAIStore/releases?q=echowork) |
+Best for news tracking, recurring summaries, quality checks, and continuous improvement. The agent first prepares a plan for approval, then creates a schedule so future runs continue toward the same objective with their full session context preserved.
 
-### EchoAI (Standalone gateway)
+### Session commands
 
-For headless use, chatbots, automation, or custom integrations.
+**`/compact` — Compact the current session context**
 
-**macOS / Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoAI/install.sh | sh
-```
+When a long conversation approaches its context limit, preserve the essential task state while freeing context space. The UI updates the current context usage after compaction.
 
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoAI/install.ps1 | iex
-```
+**`/clear` — Clear the current message list**
 
-### EchoCode (Standalone CLI agent)
+Remove the messages currently shown and return to a clean conversation view.
 
-For terminal-only use or embedding in other systems.
+## HTML App: turn a workspace into an application
 
-**macOS / Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoCode/install.sh | sh
-```
+HTML App is one of the capabilities that most clearly separates EchoWork from ordinary AI workspaces. Describe what you need, and an agent can create an interactive interface inside the workspace that calls AI, reads and organizes files, stores state, and presents data.
 
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/EchoWorker/EchoAIStore/main/EchoCode/install.ps1 | iex
-```
+A workspace can therefore become more than a container for files and conversations. It can be a dashboard, report center, knowledge browser, form, or purpose-built processing tool. Combined with workspace data, Skills, Memory, and Cron, an HTML App becomes a lightweight AI application that keeps running and evolves with your needs.
 
-### All release archives
+### Example: News Tracker Workspace
 
-See the [Releases](https://github.com/EchoWorker/EchoAIStore/releases) page for all platforms and versions.
+| Stage | How it works |
+| --- | --- |
+| **Collect** | Cron gathers the latest news for selected topics every day. |
+| **Process** | The agent deduplicates, categorizes, summarizes, and identifies trends. |
+| **Preserve** | Articles, sources, and analysis remain in the workspace. |
+| **Present** | An HTML App displays the results in a searchable, filterable dashboard. |
+| **Evolve** | Ask the agent to add sources, filters, charts, or new analysis dimensions at any time. |
 
-| Product | Windows x64 | macOS ARM64 | Linux x64 |
-|---|---|---|---|
-| EchoWork | `.exe` installer | `.dmg` | — |
-| EchoAI | `.zip` | `.tar.gz` | `.tar.gz` |
-| EchoCode | `.zip` | `.tar.gz` | `.tar.gz` |
+The HTML App, data files, and project Skills can travel with the workspace folder as a reusable application template. Other users can import it, configure their own provider and data sources, recreate the scheduled jobs they need, and continue using or customizing it.
 
----
+> **What you share is no longer a static result, but a working method that can run again and keep evolving.**
 
-## 🔗 Source Repositories
+## Quick start
 
-| Project | Repository | Language | License |
-|---|---|---|---|
-| EchoCode | [EchoWorker/EchoCodeRust](https://github.com/EchoWorker/EchoCodeRust) | Rust | AGPL-3.0 |
-| EchoAI | [EchoWorker/EchoAI](https://github.com/EchoWorker/EchoAI) | Rust | AGPL-3.0 |
-| EchoWork | [EchoWorker/EchoWork](https://github.com/EchoWorker/EchoWork) | TypeScript + Rust | AGPL-3.0 |
+### 1. Install EchoWork
+
+Visit the [latest release](https://github.com/EchoWorker/EchoAIStore/releases/tag/echowork-latest) and download the installer for **Windows x64** or **macOS Apple Silicon**. Release builds already include EchoAI, so no separate service deployment is required.
+
+### 2. Connect your AI
+
+The first-run wizard guides you through choosing a provider, entering credentials, and selecting a default model. You can connect compatible services such as OpenAI and Anthropic, or sign in with an existing GitHub Copilot entitlement. After verification, the model is available for chat, file work, audio cleanup, and HTML Apps.
+
+### 3. Create your first workspace
+
+Choose a local folder for the work you want to do. Good starting points include:
+
+- research notes, meeting records, and spreadsheets;
+- a Git project that needs development or review;
+- a dedicated folder for reports, news tracking, or knowledge management.
+
+EchoWork organizes files, sessions, Git, project Skills, and agent outputs around that workspace. Your source materials and generated artifacts stay in the folder you selected, ready to open and inspect.
+
+### 4. Deliver your first result
+
+Describe the outcome in the right-side chat without translating it into low-level commands. For example:
+
+> **Turn the research in this workspace into a quarterly review deck. Plan the narrative first, generate the PowerPoint, and let me inspect every slide before finalizing it.**
+
+During execution, you can inspect plans, todos, tool calls, and file changes, and add requirements at any time. When the work is complete, open the artifact in Preview and review the actual Git diff.
+
+### 5. Start working in parallel
+
+You do not need to wait for the first task to finish. Open another session to transcribe audio, analyze data, or modify code while the original task continues. Each workflow keeps its own status and context.
+
+Once the basic flow feels familiar, you can also:
+
+- install specialized capabilities from **SkillHub**;
+- turn reports, inspections, and information gathering into scheduled **Cron** jobs;
+- add dashboards, forms, and data-processing interfaces with **HTML Apps**;
+- receive external work from WeChat, Slack, or webhooks through **Channels**.
+
+## Feedback and license
+
+[Report an issue or suggest a feature](https://github.com/EchoWorker/EchoAIStore/issues) · [View the latest release](https://github.com/EchoWorker/EchoAIStore/releases/tag/echowork-latest)
+
+EchoWork is licensed under [AGPL-3.0-or-later](https://github.com/EchoWorker/EchoWork/blob/main/LICENSE).
