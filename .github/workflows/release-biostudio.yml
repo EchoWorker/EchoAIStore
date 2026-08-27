@@ -72,10 +72,10 @@ jobs:
             [[ $(jq -r '.draft // false' <<<"$release") == false ]] || { echo "$echoai_tag is a draft" >&2; exit 1; }
             echoai_version="$REQUESTED_ECHOAI_VERSION"
           else
-            release=$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-              --jq '[.[][] | select((.draft | not) and (.prerelease | not) and (.tag_name | test("^echoai-v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$")))][0]')
-            echoai_tag=$(jq -r '.tag_name // empty' <<<"$release")
+            release=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100")
+            echoai_tag=$(jq -r '[.[] | select((.draft | not) and (.prerelease | not) and (.tag_name | test("^echoai-v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$")))][0].tag_name // empty' <<<"$release")
             [[ -n "$echoai_tag" ]] || { echo 'No stable EchoAI release found' >&2; exit 1; }
+            release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${echoai_tag}")
             echoai_version="${echoai_tag#echoai-v}"
           fi
 
