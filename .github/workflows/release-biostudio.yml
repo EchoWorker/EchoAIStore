@@ -191,6 +191,15 @@ jobs:
 
       - run: npm ci
 
+      - name: Verify BioStudio identity integration
+        shell: bash
+        run: |
+          npm run lint
+          npm run check:ui
+          npm test -- --run src/modules/activity-bar/AccountButton.test.tsx src/stores/__tests__/identity.test.ts
+          cargo test --manifest-path src-tauri/Cargo.toml identity
+          cargo test --manifest-path src-tauri/Cargo.toml windows_instance
+
       - name: Download EchoAI artifact from this run or a stable release
         shell: bash
         env:
@@ -250,7 +259,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: npx tauri
-          args: --target ${{ matrix.target }}
+          args: --config src-tauri/tauri.prod.conf.json --target ${{ matrix.target }}
 
       - name: Collect and scan artifacts
         shell: bash
