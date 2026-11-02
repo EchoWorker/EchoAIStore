@@ -252,6 +252,17 @@ jobs:
         shell: bash
         run: rm -rf src-tauri/target/${{ matrix.target }}/release/bundle
 
+      - name: Build Windows installer UI and verify contract
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          rustup target add i686-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/build-installer-ui.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/check-installer-contract.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build Tauri app and sign updater artifacts
         uses: tauri-apps/tauri-action@v0.5.25
         env:
@@ -267,10 +278,15 @@ jobs:
           set -euo pipefail
           mkdir dist-artifacts
           if [[ '${{ runner.os }}' == Windows ]]; then
-            cp src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe dist-artifacts/
-            cp src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe.sig dist-artifacts/
-            installer=$(find dist-artifacts -maxdepth 1 -name '*.exe' -print -quit)
-            test -n "$installer"
+            shopt -s nullglob
+            installers=(src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe)
+            if [[ "${#installers[@]}" -ne 1 ]]; then
+              echo "ERROR: expected exactly one Windows setup.exe, found ${#installers[@]}" >&2
+              exit 1
+            fi
+            installer="${installers[0]}"
+            test -s "${installer}.sig" || { echo "Missing matching updater signature: ${installer}.sig" >&2; exit 1; }
+            cp "$installer" "${installer}.sig" dist-artifacts/
             mkdir installer-scan
             7z x -y "$installer" -oinstaller-scan >/dev/null
           else
@@ -313,9 +329,17 @@ jobs:
           set -euo pipefail
           tag="biostudio-v${VERSION}"
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}"
-          find_one() { local f; f=$(find artifacts -type f -name "$1" -print -quit); [[ -n "$f" ]] || { echo "Missing $2" >&2; exit 1; }; printf '%s\n' "$f"; }
+          find_one() {
+            local found count
+            found=$(find artifacts -type f -name "$1")
+            count=$(printf '%s\n' "$found" | awk 'NF { n++ } END { print n+0 }')
+            [[ "$count" -eq 1 ]] || { echo "Expected exactly one $2, found $count" >&2; exit 1; }
+            printf '%s\n' "$found"
+          }
           win=$(find_one '*-setup.exe' 'Windows installer')
-          win_sig=$(cat "$(find_one '*-setup.exe.sig' 'Windows signature')")
+          win_sig_file=$(find_one '*-setup.exe.sig' 'Windows signature')
+          [[ "$win_sig_file" == "${win}.sig" && -s "$win_sig_file" ]] || { echo 'Windows signature must match the unique installer' >&2; exit 1; }
+          win_sig=$(cat "$win_sig_file")
           mac=$(find_one '*.app.tar.gz' 'macOS updater bundle')
           mac_sig=$(cat "$(find_one '*.app.tar.gz.sig' 'macOS signature')")
           jq -n --arg version "$VERSION" --arg notes "BioStudio v${VERSION}" \
@@ -326,7 +350,7 @@ jobs:
           mkdir release-files
           find artifacts -type f \( -name '*.exe' -o -name '*.nsis.zip' -o -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.sig' \) -exec cp {} release-files/ \;
           cp latest.json release-files/
-          test "$(find release-files -maxdepth 1 -name '*.exe' | wc -l)" -ge 1
+          test "$(find release-files -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
           test "$(find release-files -maxdepth 1 -name '*.app.tar.gz' | wc -l)" -ge 1
           cat latest.json
 
