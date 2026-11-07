@@ -191,6 +191,14 @@ jobs:
 
       - run: npm ci
 
+      # tauri.conf.json bundles echoai/plugins/biostudio-files.json, and tauri-build checks that
+      # every resource exists when it compiles src-tauri (cargo test included). The file is
+      # gitignored and regenerated in the embed step below (which wipes src-tauri/echoai first),
+      # so generate it here for the verification build.
+      - name: Generate BioStudio plugin manifest for verification build
+        shell: bash
+        run: npm run plugin:manifest
+
       - name: Verify BioStudio identity integration
         shell: bash
         run: |
