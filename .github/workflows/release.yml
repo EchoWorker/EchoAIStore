@@ -110,7 +110,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             archive: echoai-linux-x64.tar.gz
             binary: echoai
-          - os: macos-14
+          - os: macos-15
             target: aarch64-apple-darwin
             archive: echoai-darwin-arm64.tar.gz
             binary: echoai
@@ -313,7 +313,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             archive: echocode-linux-x64.tar.gz
             binary: echo-code
-          - os: macos-14
+          - os: macos-15
             target: aarch64-apple-darwin
             archive: echocode-darwin-arm64.tar.gz
             binary: echo-code
