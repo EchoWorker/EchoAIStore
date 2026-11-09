@@ -105,7 +105,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             echoai_archive: echoai-windows-x64.zip
           - platform: macos-arm
-            os: macos-14
+            os: macos-latest
             target: aarch64-apple-darwin
             echoai_archive: echoai-darwin-arm64.tar.gz
     steps:
