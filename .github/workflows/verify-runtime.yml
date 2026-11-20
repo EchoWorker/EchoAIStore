@@ -1,0 +1,40 @@
+name: Verify NuGet ONNX Runtime
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-runtime:
+    name: Runtime (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: macos-15
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test extraction and rejection rules
+        run: python -m unittest discover -s scripts/runtime -p 'test_*.py'
+      - name: Download, verify signature, and load native runtime
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          DOTNET_NOLOGO: '1'
+        run: |
+          python scripts/runtime/nuget_runtime.py --download --target '${{ matrix.target }}' --package "$env:RUNNER_TEMP/microsoft.ml.onnxruntime.1.24.2.nupkg" --output "$env:RUNNER_TEMP/runtime"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
